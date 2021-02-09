@@ -142,8 +142,8 @@ class AcsSession(AcsBaseModel):
         # set InformInterval to 2 hours
         configdict['django_acs.acs.informinterval'] = acs_settings.INFORM_INTERVAL
 
-        # enable ACS managed firmware upgrades (disables manufacturer/provider upgrades)
-        configdict['django_acs.acs.acs_managed_upgrades'] = True
+        # set ACS managed firmware upgrades (True disables manufacturer/provider upgrades)
+        configdict['django_acs.acs.acs_managed_upgrades'] = acs_settings.ACS_MANAGED_UPGRADES
 
         # add acs client xmpp settings (only if we have an xmpp account for this device)
         if self.acs_device.acs_xmpp_password:
