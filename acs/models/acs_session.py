@@ -349,7 +349,7 @@ class AcsSession(AcsBaseModel):
         one asking for the whole device tree
         """
         for httpreq in self.acs_http_requests.filter(soap_element='{%s}GetParameterValuesResponse' % self.cwmp_namespace):
-            if httpreq.soap_body.find('cwmp:GetParameterValuesResponse', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object) is not None:
+            if httpreq.soap_body and httpreq.soap_body.find('cwmp:GetParameterValuesResponse', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object) is not None:
                 # one of the requested values is Device. - great! return this request
                 return httpreq
         # nothing found
@@ -361,7 +361,7 @@ class AcsSession(AcsBaseModel):
         one asking for the whole device tree
         """
         for httpreq in self.acs_http_requests.filter(soap_element='{%s}GetParameterNamesResponse' % self.cwmp_namespace):
-            if httpreq.soap_body.find('cwmp:GetParameterNamesResponse', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object) is not None:
+            if httpreq.soap_body and httpreq.soap_body.find('cwmp:GetParameterNamesResponse', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object) is not None:
                 # one of the requested values is Device. - great! return this request
                 return httpreq
         # nothing found
