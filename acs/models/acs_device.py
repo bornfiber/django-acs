@@ -152,7 +152,10 @@ class AcsDevice(AcsBaseModel):
         logger.debug(attributes_rpc_response)
 
         # 1) check if this GetParameterAtrributesResponse is a response to a GetParameterAtrributes RPC call for the whole tree...
-        if attributes_rpc_response.rpc_response_to.soap_body.find('cwmp:GetParameterAttributes', acs_session.soap_namespaces).xpath('.//string[text()="%s."]' % acs_session.root_data_model.root_object) is None:
+        if not attributes_rpc_response.rpc_response_to.soap_body:
+            acs_session.acs_log("GetParameterAttributesResponse seen, but the request it is a response to (%s) has no soap body. - not updating acs_device.acs_parameter" % attributes_rpc_response.rpc_response_to)
+            return False
+        elif attributes_rpc_response.rpc_response_to.soap_body.find('cwmp:GetParameterAttributes', acs_session.soap_namespaces).xpath('.//string[text()="%s."]' % acs_session.root_data_model.root_object) is None:
             acs_session.acs_log("GetParameterAttributesResponse seen, but it is not a response to a GetParameterAttributes for '%s.' - not updating acs_device.acs_parameter" % acs_session.root_data_model.root_object)
             return False
 
