@@ -431,11 +431,18 @@ class AcsServerView(View):
                         acs_session.acs_log(message)
                         return HttpResponseBadRequest(message)
 
-                    ### find the parameterkey and update the acs_device so we know its current_config_level
-                    ### since this is a SetParameterValuesResponse we will probably get settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE here,
-                    ### which is fine(tm)
-                    parameterkey = acs_http_request.rpc_response_to.soap_body.find('cwmp:SetParameterValues', acs_session.soap_namespaces).find('ParameterKey').text
-                    acs_session.acs_device.current_config_level = parse_datetime(parameterkey)
+                    if acs_http_request.rpc_response_to.soap_body:
+                        ### find the parameterkey and update the acs_device so we know its current_config_level
+                        ### since this is a SetParameterValuesResponse we will probably get settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE here,
+                        ### which is fine(tm)
+                        parameterkey = acs_http_request.rpc_response_to.soap_body.find('cwmp:SetParameterValues', acs_session.soap_namespaces).find('ParameterKey').text
+                        acs_session.acs_device.current_config_level = parse_datetime(parameterkey)
+                    else:
+                        ### soap_body of rpc_response_to object is gone.
+                        ### probably deleted during nightly clean up (to minimize disk usage)
+                        message = 'The soap body that this http request is in response to is gone. Probably deleted during nightly clean up!'
+                        acs_session.acs_log(message)
+                        return HttpResponseBadRequest(message)
 
                 elif acs_http_request.cwmp_rpc_method == 'SetParameterAttributesResponse':
                     ### find the parameterkey and update the acs_device so we know its current_config_level
