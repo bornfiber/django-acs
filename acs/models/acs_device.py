@@ -151,7 +151,7 @@ class AcsDevice(AcsBaseModel):
 
         logger.debug(attributes_rpc_response)
 
-        # 1) check if this GetParameterAtrributesResponse is a response to a GetParameterAtrributes RPC call for the whole tree...
+        ### 1) check if this GetParameterAtrributesResponse is a response to a GetParameterAtrributes RPC call for the whole tree...
         if not attributes_rpc_response.rpc_response_to.soap_body:
             acs_session.acs_log("GetParameterAttributesResponse seen, but the request it is a response to (%s) has no soap body. - not updating acs_device.acs_parameter" % attributes_rpc_response.rpc_response_to)
             return False
@@ -159,14 +159,19 @@ class AcsDevice(AcsBaseModel):
             acs_session.acs_log("GetParameterAttributesResponse seen, but it is not a response to a GetParameterAttributes for '%s.' - not updating acs_device.acs_parameter" % acs_session.root_data_model.root_object)
             return False
 
+        ### 2) check if attributes_rpc_response.soap_body exists
+        if not attributes_rpc_response.soap_body:
+            acs_session.acs_log("GetParameterAttributesResponse seen, but it has no soap body. - not updating acs_device.acs_parameter")
+            return False
+
         ### check if we have the other two required responses in this acs session, so we can build the tree for this device.
-        ### 2) Did we also complete a GetParameterValues call for the full tree in this acs session?
+        ### 3) Did we also complete a GetParameterValues call for the full tree in this acs session?
         values_rpc_response = acs_session.get_all_values_rpc_response()
         if not values_rpc_response:
             acs_session.acs_log("No GetParameterValues for the full tree found in this session, not updating acs_device.acs_parameters")
             return False
 
-        ### 3) Did we also complete a GetParameterNames RPC with parampath='' and nextlevel=0 in this acs session?
+        ### 4) Did we also complete a GetParameterNames RPC with parampath='' and nextlevel=0 in this acs session?
         names_rpc_response = acs_session.get_all_names_rpc_response()
 
         if not names_rpc_response:
