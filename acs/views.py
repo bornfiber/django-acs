@@ -37,7 +37,7 @@ class AcsServerView(View):
             hexid = request.COOKIES['acs_session_id']
             try:
                 acs_session = AcsSession.objects.get(acs_session_id=hexid)
-                acs_session.acs_log("got acs_session_id from acs_session_id cookie")
+                acs_session.acs_log("got acs_session_id from acs_session_id cookie (ip: %s)" % (ip))
             except AcsSession.DoesNotExist:
                 ### create a new AcsSession? only if we haven't already got enough sessions from this client ip
                 sessions_since_informinterval = AcsSession.objects.filter(
@@ -54,7 +54,7 @@ class AcsServerView(View):
                     client_ip=ip,
                 )
                 hexid = acs_session.hexid
-                acs_session.acs_log("got invalid acs_session_id %s from acs_session_id cookie, new acs session created" % request.COOKIES['acs_session_id'])
+                acs_session.acs_log("got invalid acs_session_id %s from acs_session_id cookie, new acs session created (ip: %s)" % (request.COOKIES['acs_session_id'], ip))
         else:
             ### no acs_session_id cookie seen, create a new AcsSession? only if we haven't already got enough sessions from this client ip
             sessions_since_informinterval = AcsSession.objects.filter(
@@ -72,7 +72,7 @@ class AcsServerView(View):
             )
             ### and save the acs session ID (uuid.hex()) in the django session for later use
             hexid = acs_session.acs_session_id.hex
-            acs_session.acs_log("created new acs session (had %s sessions in the latest informinterval)" % sessions_since_informinterval)
+            acs_session.acs_log("created new acs session (had %s sessions in the latest informinterval, ip: %s)" % (sessions_since_informinterval, ip))
 
         ### do we have a body in this http request? attempt parsing it as XML if so
         validxml=False
