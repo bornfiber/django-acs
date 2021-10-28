@@ -206,7 +206,7 @@ class AcsServerView(View):
                         acs_session.acs_log(message)
                         return HttpResponseBadRequest(message)
 
-                    model = deviceid.find('ProductClass').text
+                    model = deviceid.find('ModelName').text
                     if not model:
                         message = 'Invalid Inform, ProductClass missing from request %s' % request
                         acs_session.acs_log(message)
@@ -220,14 +220,14 @@ class AcsServerView(View):
 
                     ### find or create acs devicevendor (using Manufacturer and OUI)
                     acs_devicevendor, created = AcsDeviceVendor.objects.get_or_create(
-                        name = vendor,
+                        name__iexact = vendor,
                         oui = oui,
                     )
 
                     ### find or create acs devicetype (using ProductClass)
                     acs_devicemodel, created = AcsDeviceModel.objects.get_or_create(
                         vendor = acs_devicevendor,
-                        name = model,
+                        name__iexact = model,
                     )
 
                     ### find or create acs device (using serial number and acs devicetype)
