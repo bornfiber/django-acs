@@ -206,7 +206,7 @@ class AcsServerView(View):
                         acs_session.acs_log(message)
                         return HttpResponseBadRequest(message)
 
-                    model = deviceid.find('ModelName').text
+                    model = deviceid.find('ProductClass').text
                     if not model:
                         message = 'Invalid Inform, ProductClass missing from request %s' % request
                         acs_session.acs_log(message)
