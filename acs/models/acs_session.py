@@ -485,7 +485,8 @@ class AcsSession(AcsBaseModel):
     def bytes_in(self):
         bytes_in = 0
         for http in self.acs_http_requests.all():
-            bytes_in += len(http.body)
+            if http.body != False:
+                bytes_in += len(http.body)
         return bytes_in
 
     @property
