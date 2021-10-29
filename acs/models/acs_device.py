@@ -243,7 +243,7 @@ class AcsDevice(AcsBaseModel):
                 'value': value.text,
                 'writable': child.find('Writable').text,
                 'notification': child.find('Notification').text if child.find('Notification') is not None else "N/A",
-                'accesslist': ",".join([acl.text for acl in child.find('AccessList').getchildren()]) if child.find('AccessList') is not None else "N/A",
+                'accesslist': ",".join([acl.text if acl.text is not None else "N/A" for acl in child.find('AccessList').getchildren()]) if child.find('AccessList') is not None else "N/A",
             }
         return OrderedDict(sorted(paramdict.items()))
 
