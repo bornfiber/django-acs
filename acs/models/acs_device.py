@@ -332,7 +332,7 @@ class AcsDevice(AcsBaseModel):
             devicemodel = apps.get_model(acsmodel['app'], acsmodel['model'])
             args = {
                 acsmodel['serial_field']: self.serial,
-                acsmodel['model_name_field']: self.model.name,
+                acsmodel['model_productclass_field']: self.model.name,
                 acsmodel['vendor_name_field']: self.model.vendor.name,
                 '%s__isnull' % acsmodel['acsdevice_relation_field']: True
             }
