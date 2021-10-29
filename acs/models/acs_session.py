@@ -494,7 +494,8 @@ class AcsSession(AcsBaseModel):
         ### this could probably be done really elegantly with .aggregate and Sum somehow
         bytes_out = 0
         for resp in self.acs_http_responses.all():
-            bytes_out += len(resp.body)
+            if resp.body:
+                bytes_out += len(resp.body)
         return bytes_out
 
     @property
