@@ -36,6 +36,8 @@ class AcsDeviceBaseModel(AcsBaseModel):
         """
         This method is called while configuring an ACS device.
         Override in your own models to add device specific config
+        Returns a dict to be merged with generic ACS client configuration.
+        Keys must be present in acs_device.model.acs_parameter_map so we know where to put them
         """
         raise NotImplementedError
 
