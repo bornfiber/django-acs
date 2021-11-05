@@ -314,7 +314,7 @@ class AcsServerView(View):
                     ### This is where we do things we want do _after_ an Inform session.
                     ### Queue jobs here before sending InformResponse and they will be run in the same session.
 
-                    # queue GetParameterNames, GetParameterValues, GetParameterAttributes
+                    # queue any supported GetParameterNames, GetParameterValues, GetParameterAttributes
                     if not acs_session.collect_device_info("Collecting information triggered by Inform"):
                         # unable to queue neccesary job
                         return HttpResponseServerError()
@@ -375,49 +375,70 @@ class AcsServerView(View):
                 ### parse the cwmp object from the soap body
                 rpcresponsexml = soap_body.find('cwmp:%s' % acs_http_request.cwmp_rpc_method, acs_session.soap_namespaces)
 
-                if acs_http_request.cwmp_rpc_method == 'GetParameterNamesResponse':
-                    ### do nothing for now, the response will be used when the GetParameterValuesResponse comes in later
-                    pass
+                # get cwmp rpc get methods (['GetParameterNames', 'GetParameterValues', 'GetParameterAttributes'])
+                cwmp_rpc_get_methods = settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS
+                # sometimes not all of these are supported by a given device
+                # when the supported methods are done we handle all data from device
+                # supported methods can be modified by overwriting method
+                # "get_supported_rpc_methods" found in AcsDeviceBaseModel (on related device)
+                related_device = acs_session.acs_device.get_related_device()
+                if related_device:
+                    # get intersection of cwmp_rpc_get_methods and supported methods
+                    supported_rpc_get_methods = set(cwmp_rpc_get_methods).intersection(related_device.get_supported_rpc_methods())
+                else:
+                    # assume all is supported
+                    supported_rpc_get_methods = cwmp_rpc_get_methods
 
-                elif acs_http_request.cwmp_rpc_method == 'GetParameterValuesResponse':
-                    # nothing here for now
-                    pass
+                if acs_http_request.cwmp_rpc_method in cwmp_rpc_get_methods:
+                    # when request is a cwmp_rpc_get_method we check if all supported
+                    # methods have been called and if so we proceed
+                    supported_rpc_get_methods_done = True
+                    for rpc_get_method in supported_rpc_get_methods:
+                        if not acs_session.get_latest_rpc_get_response(response_name=rpc_get_method):
+                            supported_rpc_get_methods_done = False
 
-                elif acs_http_request.cwmp_rpc_method == 'GetParameterAttributesResponse':
-                    # this is a GetParameterAttributesResponse, attempt to update the device acs parameters
-                    if acs_session.acs_device.update_acs_parameters(acs_http_request):
-                        #################################################################################################
-                        ### this is where we do things to and with the recently fetched acs parameters from the device,
-                        ### like configuring the device or handling user config changes
-                        ### Queue jobs here before sending GetParameterAttributesResponse and they will be run in the same session.
+                    if supported_rpc_get_methods_done:
+                        # attempt to update the device acs parameters
+                        if acs_session.update_device_acs_parameters():
+                            #################################################################################################
+                            ### this is where we do things to and with the recently fetched acs parameters from the device,
+                            ### like configuring the device or handling user config changes
+                            ### Queue jobs here before sending GetParameterAttributesResponse and they will be run in the same session.
 
-                        # extract device uptime from acs_device.acs_parameters and save it to acs_session.device_uptime
-                        acs_session.update_device_uptime()
+                            # extract device uptime from acs_device.acs_parameters and save it to acs_session.device_uptime
+                            acs_session.update_device_uptime()
 
-                        # check if we need to call the handle_user_config_changes() method on the acs_device,
-                        # we only check for user changes if a device has been configured by us already, and doesn't need any more config at the moment
-                        if acs_session.acs_device.current_config_level and acs_session.acs_device.current_config_level > acs_session.acs_device.get_desired_config_level():
-                            # device is already configured, and doesn't need additional config from us right now, so check if the user changed anything on the device, and act accordingly
-                            acs_session.acs_device.handle_user_config_changes()
+                            # check if we need to call the handle_user_config_changes() method on the acs_device,
+                            # we only check for user changes if a device has been configured by us already, and doesn't need any more config at the moment
+                            if acs_session.acs_device.current_config_level and acs_session.acs_device.current_config_level > acs_session.acs_device.get_desired_config_level():
+                                # device is already configured, and doesn't need additional config from us right now, so check if the user changed anything on the device, and act accordingly
+                                acs_session.acs_device.handle_user_config_changes()
 
-                        # refresh to get any changes from above
-                        acs_session.refresh_from_db()
+                            # refresh to get any changes from above
+                            acs_session.refresh_from_db()
 
-                        # if this device has been reconfigured in this session we collect data again,
-                        # if not, we reconfigure it if needed
-                        if acs_session.configuration_done:
-                            # device has been configured, so collect data again so we have the latest (unless we have already done so)
-                            if not acs_session.post_configuration_collection_done:
-                                if not acs_session.collect_device_info(reason="Device has been reconfigured"):
-                                    acs_session.acs_log("Unable to queue one or more jobs to collect info after configuration")
+                            # if this device has been reconfigured in this session we collect data again,
+                            # if not, we reconfigure it if needed
+                            if acs_session.configuration_done:
+                                # device has been configured, so collect data again so we have the latest (unless we have already done so)
+                                if not acs_session.post_configuration_collection_done:
+                                    if not acs_session.collect_device_info(reason="Device has been reconfigured"):
+                                        acs_session.acs_log("Unable to queue one or more jobs to collect info after configuration")
+                                        return HttpResponseServerError()
+                            else:
+                                # this device has not been configured in this ACS session. This is where we check if we need to configure it now.
+                                # acs_session.configure_device returns False if there was a problem configuring the device, and true if
+                                # the device was configured, or did not need to be configured
+                                if not acs_session.configure_device():
+                                    # there was a problem creating configure jobs for the device
                                     return HttpResponseServerError()
                         else:
-                            # this device has not been configured in this ACS session. This is where we check if we need to configure it now.
-                            # acs_session.configure_device returns False if there was a problem configuring the device, and true if
-                            # the device was configured, or did not need to be configured
-                            if not acs_session.configure_device():
-                                # there was a problem creating configure jobs for the device
-                                return HttpResponseServerError()
+                            # acs_parameters could not be updated, do nothing more
+                            pass
+                    else:
+                        ### do nothing for now, the response will be used when all supported_rpc_get_methods are done
+                        pass
+
 
                 elif acs_http_request.cwmp_rpc_method == 'GetRPCMethodsResponse':
                     pass

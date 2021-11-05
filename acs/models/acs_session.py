@@ -268,17 +268,31 @@ class AcsSession(AcsBaseModel):
         """
         Called in the beginning of the Inform, and after configuring device, to gather all information we can from the acs device
         """
-        if not self.get_all_parameter_names(reason):
-            self.acs_log('error, unable to create GetParameterNames acs queue job for %s' % self.acs_device)
+        # check if we have acs_device
+        acs_device = self.acs_device
+        if not acs_device:
+            self.acs_log("error, unable to create any get rpc method without an acs_device related to session (%s)" % self)
             return False
 
-        if not self.get_all_parameter_values(reason):
-            self.acs_log('error, unable to create GetParameterValues acs queue job for %s' % self.acs_device)
-            return False
+        # determine supported rpc get methods
+        related_device = acs_device.get_related_device()
+        if related_device:
+            supported_rpc_get_methods = set(settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS).intersection(related_device.get_supported_rpc_methods())
+        else:
+            supported_rpc_get_methods = settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS
 
-        if not self.get_all_parameter_attributes(reason):
-            self.acs_log('error, unable to create GetParameterAttributes acs queue job for %s' % self.acs_device)
-            return False
+        if "GetParameterNames" in supported_rpc_get_methods:
+            if not self.get_all_parameter_names(reason):
+                self.acs_log('error, unable to create GetParameterNames acs queue job for %s' % self.acs_device)
+                return False
+        if "GetParameterValues" in supported_rpc_get_methods:
+            if not self.get_all_parameter_values(reason):
+                self.acs_log('error, unable to create GetParameterValues acs queue job for %s' % self.acs_device)
+                return False
+        if "GetParameterAttributes" in supported_rpc_get_methods:
+            if not self.get_all_parameter_attributes(reason):
+                self.acs_log('error, unable to create GetParameterAttributes acs queue job for %s' % self.acs_device)
+                return False
 
         # all good
         return True
@@ -312,11 +326,12 @@ class AcsSession(AcsBaseModel):
         """
         Converts something like django_acs.acs.parameterkey to Device.ManagementServer.ParameterKey based on the root_data_model in use in this session.
         """
-        # TODO: Does not currently support device overrides!
         if not self.root_data_model:
             return False
         root_object = self.root_data_model.root_object
-        element = default_acs_device_parametermap[parametername]
+        # get parameter map from acs_device.model to include any model overrides
+        acs_parameter_map = self.acs_device.model.acs_parameter_map
+        element = acs_parameter_map[parametername]
         return "%s.%s" % (root_object, element)
 
     def get_inform_eventcodes(self, inform, acshttprequest):
@@ -343,17 +358,21 @@ class AcsSession(AcsBaseModel):
         # return true even if we didn't find any eventcodes
         return True
 
-    def get_all_values_rpc_response(self):
+    def get_latest_rpc_get_response(self, response_name):
         """
-        Loop over the GetParameterValuesResponse http requests in this acs session and find
-        one asking for the whole device tree
+        Loop over the http requests with given response name ('GetParameterNamesResponse',
+        'GetParameterValuesResponse', 'GetParameterAttributesResponse') in this acs session and find
+        the latest asking for the whole device tree
         """
-        for httpreq in self.acs_http_requests.filter(soap_element='{%s}GetParameterValuesResponse' % self.cwmp_namespace):
-            if httpreq.soap_body != False and httpreq.soap_body.find('cwmp:GetParameterValuesResponse', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object) is not None:
-                # one of the requested values is Device. - great! return this request
-                return httpreq
-        # nothing found
-        return False
+        if response_name == "GetParameterNamesResponse":
+            return self.get_all_names_rpc_response()
+        elif response_name == "GetParameterValuesResponse":
+            return self.get_all_values_rpc_response()
+        elif response_name == "GetParameterAttributesResponse":
+            return self.get_all_attributes_rpc_response()
+        else:
+            self.acs_log("Not returning latest rpc get response as response name is unknown: %s " % response_name)
+            return False
 
     def get_all_names_rpc_response(self):
         """
@@ -361,9 +380,47 @@ class AcsSession(AcsBaseModel):
         one asking for the whole device tree
         """
         for httpreq in self.acs_http_requests.filter(soap_element='{%s}GetParameterNamesResponse' % self.cwmp_namespace):
-            if httpreq.soap_body != False and httpreq.soap_body.find('cwmp:GetParameterNamesResponse', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object) is not None:
-                # one of the requested values is Device. - great! return this request
-                return httpreq
+            if httpreq.soap_body != False and httpreq.soap_body.find('cwmp:GetParameterNamesResponse', self.soap_namespaces) is not None:
+                # is this rpc_response to a request for the whole device tree
+                # this call is different as we don't ask for "Device." but instead
+                # both NextLevel = 0 and ParameterPath = ""
+                rpc_response_to = httpreq.rpc_response_to
+                # xpath returns list, if not empty then goooood
+                if rpc_response_to.soap_body != False and rpc_response_to.soap_body.find('cwmp:GetParameterNames', self.soap_namespaces).xpath('.//NextLevel[text()="0"]') and rpc_response_to.soap_body.find('cwmp:GetParameterNames', self.soap_namespaces).xpath('.//ParameterPath[not(text())]'):
+                    # one of the requested values is Device. - great! return this request
+                    return httpreq
+        # nothing found
+        return False
+
+    def get_all_values_rpc_response(self):
+        """
+        Loop over the GetParameterValuesResponse http requests in this acs session and find
+        one asking for the whole device tree
+        """
+        for httpreq in self.acs_http_requests.filter(soap_element='{%s}GetParameterValuesResponse' % self.cwmp_namespace):
+            if httpreq.soap_body != False and httpreq.soap_body.find('cwmp:GetParameterValuesResponse', self.soap_namespaces) is not None:
+                # is this rpc_response to a request for the whole device tree
+                rpc_response_to = httpreq.rpc_response_to
+                # xpath returns list, if not empty then goooood
+                if rpc_response_to.soap_body != False and rpc_response_to.soap_body.find('cwmp:GetParameterValues', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object):
+                    # one of the requested values is Device. - great! return request
+                    return httpreq
+        # nothing found
+        return False
+
+    def get_all_attributes_rpc_response(self):
+        """
+        Loop over the GetParameterNamesResponse http requests in this acs session and find
+        one asking for the whole device tree
+        """
+        for httpreq in self.acs_http_requests.filter(soap_element='{%s}GetParameterAttributesResponse' % self.cwmp_namespace):
+            if httpreq.soap_body != False and httpreq.soap_body.find('cwmp:GetParameterAttributesResponse', self.soap_namespaces) is not None:
+                # is this rpc_response to a request for the whole device tree
+                rpc_response_to = httpreq.rpc_response_to
+                # xpath returns list, if not empty then goooood
+                if rpc_response_to.soap_body != False and rpc_response_to.soap_body.find('cwmp:GetParameterAttributes', self.soap_namespaces).xpath('.//string[text()="%s."]' % self.root_data_model.root_object):
+                    # one of the requested values is Device. - great! return this request
+                    return httpreq
         # nothing found
         return False
 
@@ -534,6 +591,97 @@ class AcsSession(AcsBaseModel):
         ad.acs_latest_session_result=self.session_result
         ad.save()
 
+    def update_device_acs_parameters(self):
+        """
+        This method checks if session has acs_device and if all supported rpc get methods are done
+        It then uses the info in the three RPC responses to build an XML tree and save it in acs_device.acs_parameters
+        """
+        # get supported rpc methods
+        acs_device = self.acs_device
+        if not acs_device:
+            self.acs_log("No acs_device related to session (%s) - not updating acs_device.acs_parameter" % self)
+            return False
+        related_device = acs_device.get_related_device()
+        if related_device:
+            supported_rpc_get_methods = set(settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS).intersection(related_device.get_supported_rpc_methods())
+        else:
+            supported_rpc_get_methods = settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS
+        # get supported rpc_responses
+        for rpc_get_method in settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS:
+            if rpc_get_method == "GetParameterNames":
+                if rpc_get_method in supported_rpc_get_methods:
+                    names_rpc_response = self.get_all_names_rpc_response()
+                    if not names_rpc_response:
+                        self.acs_log("No valid GetParameterNamesResponse seen in session (%s) - not updating acs_device.acs_parameter" % self)
+                        return False
+                else:
+                    names_rpc_response = False
+            if rpc_get_method == "GetParameterValues":
+                if rpc_get_method in supported_rpc_get_methods:
+                    values_rpc_response = self.get_all_values_rpc_response()
+                    if not values_rpc_response:
+                        self.acs_log("No valid GetParameterValuesResponse seen in session (%s) - not updating acs_device.acs_parameter" % self)
+                        return False
+                else:
+                    values_rpc_response = False
+            if rpc_get_method == "GetParameterAttributes":
+                if rpc_get_method in supported_rpc_get_methods:
+                    attributes_rpc_response = self.get_all_attributes_rpc_response()
+                    if not attributes_rpc_response:
+                        self.acs_log("No valid GetParameterAttributesResponse seen in session (%s) - not updating acs_device.acs_parameter" % self)
+                        return False
+                else:
+                    attributes_rpc_response = False
+
+        ### OK, ready to update the parameters...
+
+        # get ParameterList from namesrequest and build a dict with writable values
+        writabledict = {}
+        if names_rpc_response:
+            names_param_list = names_rpc_response.soap_body.find('cwmp:GetParameterNamesResponse', self.soap_namespaces).find('ParameterList')
+            for child in names_param_list.iterchildren():
+                writabledict[child.xpath("./Name")[0].text] = child.xpath("./Writable")[0].text
+
+        # get ParameterList from GetParameterAttributesResponse and build a dict of lists of attributes
+        attributedict = {}
+        if attributes_rpc_response:
+            attributes_param_list = attributes_rpc_response.soap_body.find('cwmp:GetParameterAttributesResponse', self.soap_namespaces).find('ParameterList')
+            for child in attributes_param_list.iterchildren():
+                attribs = []
+                name = child.xpath("Name")[0]
+                for attrib in name.itersiblings():
+                    attribs.append(attrib)
+                attributedict[child.xpath("Name")[0].text] = attribs
+
+        root = etree.Element("DjangoAcsParameterCache")
+        ### loop through all params in valuesrequest
+        paramcount = 0
+        param_omitted_count = 0
+        for param in values_rpc_response.soap_body.find('cwmp:GetParameterValuesResponse', self.soap_namespaces).find('ParameterList').getchildren():
+            paramname = param.xpath("Name")[0].text
+            paramcount += 1
+
+            if writabledict:
+                if paramname in writabledict:
+                    writable = etree.Element("Writable")
+                    writable.text = writabledict[paramname]
+                    param.append(writable)
+
+            if attributedict:
+                if paramname in attributedict:
+                    for attrib in attributedict[paramname]:
+                        param.append(attrib)
+
+            # append this to the tree
+            root.append(param)
+
+        ### alright, save the tree
+        acs_device.acs_parameters = etree.tostring(root, xml_declaration=True).decode('utf-8')
+        acs_device.acs_parameters_time = timezone.now()
+        acs_device.save()
+        self.acs_log("Finished processing %s acs parameters in session %s for device %s" % (paramcount, self, acs_device))
+        return True
+
 
 ###########################################################################################################
 ### ACS RPC METHODS BELOW HERE
@@ -577,7 +725,6 @@ class AcsSession(AcsBaseModel):
             automatic=automatic,
         )
         return job
-
 
     ### GetParameterNames
     def acs_rpc_get_parameter_names(self, reason, parampath='', nextlevel='0', automatic=False, urgent=False):
@@ -705,4 +852,5 @@ class AcsSession(AcsBaseModel):
             automatic=automatic,
         )
         return job
+
 
