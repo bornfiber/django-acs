@@ -32,7 +32,7 @@ class AcsDeviceModel(AcsBaseModel):
         based on the category of devicemodel
         """
         parameterlist = []
-        if self.category.name == "WIFI":
+        if self.category.name in ["WIFI", "MODEM"]:
             #This acs device category needs notifications for the whole Wifi tree
             parameterlist.append("%s.Wifi." % root_object)
         return parameterlist

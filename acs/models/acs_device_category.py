@@ -7,12 +7,14 @@ class AcsDeviceCategory(AcsBaseModel):
     """ The category of an ACS device model. Used to determine what to do with the device. """
     WIFI = "WIFI"
     SETTOPBOX = "SETTOPBOX"
+    MODEM = "MODEM"
     UNKNOWN = "UNKNOWN"
 
     CATEGORY_CHOICES = (
         (UNKNOWN, 'Unknown'),
         (WIFI, 'Wifi Device'),
-        (SETTOPBOX, 'Settop Box')
+        (SETTOPBOX, 'Settop Box'),
+        (MODEM, 'Modem'),
     )
 
     name = models.CharField(max_length=100, choices=CATEGORY_CHOICES, default=UNKNOWN, unique=True)
