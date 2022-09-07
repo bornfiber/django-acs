@@ -222,12 +222,18 @@ class AcsServerView(View):
                     acs_devicevendor, created = AcsDeviceVendor.objects.get_or_create(
                         name__iexact = vendor,
                         oui = oui,
+                        defaults = {
+                            "name": vendor,
+                        }
                     )
 
                     ### find or create acs devicetype (using ProductClass)
                     acs_devicemodel, created = AcsDeviceModel.objects.get_or_create(
                         vendor = acs_devicevendor,
                         name__iexact = model,
+                        defaults = {
+                            "name": model,
+                        }
                     )
 
                     ### find or create acs device (using serial number and acs devicetype)
