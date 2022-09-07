@@ -44,7 +44,7 @@ class AcsDeviceBaseModel(AcsBaseModel):
     def get_user_config_changelist(self):
         """
         This method should acs_device.acs_parameters versus the local records and returns a list of changed elements,
-        if any. Shoukd return an empty list if everything in acs_parameters matches the local records.
+        if any. Should return an empty list if everything in acs_parameters matches the local records.
         """
         raise NotImplementedError
 
