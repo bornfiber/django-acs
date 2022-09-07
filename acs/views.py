@@ -36,7 +36,8 @@ class AcsServerView(View):
         if 'acs_session_id' in request.COOKIES:
             hexid = request.COOKIES['acs_session_id']
             try:
-                acs_session = AcsSession.objects.get(acs_session_id=hexid)
+                ### do we have an unfinished acs session
+                acs_session = AcsSession.objects.get(acs_session_id=hexid, session_result=False)
                 acs_session.acs_log("got acs_session_id from acs_session_id cookie (ip: %s)" % (ip))
             except AcsSession.DoesNotExist:
                 ### create a new AcsSession? only if we haven't already got enough sessions from this client ip
@@ -395,12 +396,12 @@ class AcsServerView(View):
                     # assume all is supported
                     supported_rpc_get_methods = cwmp_rpc_get_methods
 
-                if acs_http_request.cwmp_rpc_method in cwmp_rpc_get_methods:
+                if acs_http_request.cwmp_rpc_method[:-8] in cwmp_rpc_get_methods:
                     # when request is a cwmp_rpc_get_method we check if all supported
                     # methods have been called and if so we proceed
                     supported_rpc_get_methods_done = True
                     for rpc_get_method in supported_rpc_get_methods:
-                        if not acs_session.get_latest_rpc_get_response(response_name=rpc_get_method):
+                        if not acs_session.get_latest_rpc_get_response(rpc_get_method=rpc_get_method):
                             supported_rpc_get_methods_done = False
 
                     if supported_rpc_get_methods_done:
@@ -416,7 +417,9 @@ class AcsServerView(View):
 
                             # check if we need to call the handle_user_config_changes() method on the acs_device,
                             # we only check for user changes if a device has been configured by us already, and doesn't need any more config at the moment
-                            if acs_session.acs_device.current_config_level and acs_session.acs_device.current_config_level > acs_session.acs_device.get_desired_config_level():
+                            current_config_level = acs_session.acs_device.current_config_level
+                            desired_config_level = acs_session.acs_device.get_desired_config_level()
+                            if current_config_level and (not desired_config_level or current_config_level > desired_config_level):
                                 # device is already configured, and doesn't need additional config from us right now, so check if the user changed anything on the device, and act accordingly
                                 acs_session.acs_device.handle_user_config_changes()
 
@@ -452,7 +455,8 @@ class AcsServerView(View):
                 elif acs_http_request.cwmp_rpc_method == 'SetParameterValuesResponse':
                     ### find status
                     status = rpcresponsexml.find('Status').text
-                    if status != '0':
+                    ### Status 0 is succesfully applied, status 1 is succesfully applied but cpe will reboot automatically to apply changes
+                    if status not in ['0', '1']:
                         ### ACS client failed to apply all our settings, fuckery is afoot!
                         message = 'The ACS device %s failed to apply our SetParameterValues settings, something is wrong!' % acs_device
                         acs_session.acs_log(message)
