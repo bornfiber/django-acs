@@ -1,5 +1,6 @@
 from datetime import timedelta
 import uuid, logging
+from lxml import etree
 from psycopg2.extras import DateTimeTZRange
 
 from acs.models import AcsBaseModel
@@ -139,11 +140,8 @@ class AcsSession(AcsBaseModel):
         # initialize empty configdict
         configdict = {}
 
-        # set InformInterval to 2 hours
+        # set InformInterval
         configdict['django_acs.acs.informinterval'] = acs_settings.INFORM_INTERVAL
-
-        # set ACS managed firmware upgrades (True disables manufacturer/provider upgrades)
-        configdict['django_acs.acs.acs_managed_upgrades'] = acs_settings.ACS_MANAGED_UPGRADES
 
         # add acs client xmpp settings (only if we have an xmpp account for this device)
         if self.acs_device.acs_xmpp_password:
@@ -182,11 +180,12 @@ class AcsSession(AcsBaseModel):
         Returns True if device does not need config, or cannot be configured because we don't have enough information.
         Return False if an attempt to queue jobs to configure the device fails.
         """
-        if not self.acs_device.get_related_device():
+        related_device = self.acs_device.get_related_device()
+        if not related_device:
             self.acs_log("Not configuring %s: We refuse to put configuration on an acs device if it has no related device" % self.acs_device)
             return True
 
-        if not self.acs_device.get_related_device().is_configurable():
+        if not related_device.is_configurable():
             self.acs_log("Not configuring %s: The real device which this acs_device is related to is not configurable" % self.acs_device)
             return True
 
@@ -194,29 +193,32 @@ class AcsSession(AcsBaseModel):
             self.acs_log("Not configuring %s: This acs_session is not ip_verified" % self.acs_device)
             return True
 
-        if self.acs_device.current_config_level and self.acs_device.current_config_level >= self.acs_device.get_desired_config_level():
+        current_config_level = self.acs_device.current_config_level
+        desired_config_level = self.acs_device.get_desired_config_level()
+        if current_config_level and (not desired_config_level or current_config_level >= desired_config_level):
             self.acs_log("Not configuring %s: This acs_device is already at least at the config_level we want it to be at" % self.acs_device)
             return True
 
         # we need to configure this device! but what is the reason?
-        if self.acs_device.current_config_level:
-            reason="Device config level is wrong (it is %s but it should be %s)" % (self.acs_device.current_config_level, self.acs_device.get_desired_config_level())
+        if current_config_level:
+            reason="Device config level is wrong (it is %s but it should be %s)" % (current_config_level, desired_config_level)
         else:
             reason="Device is unconfigured/has been factory defaulted"
 
         # we need to update parameterkey in both calls even though we have more work to do,
         # because it appears the parameterkey is not updated after a SetParameterAttributes call for some reason
-        if not self.configure_device_parameter_values(reason=reason, update_parameterkey=True):
-            self.acs_log('error, unable to create acs job to configure device parameter values for %s' % self.acs_device)
-            return False
-
-        # get the list of parameters we want to set notification on
-        parameterlist = self.acs_device.model.get_active_notification_parameterlist(self.root_data_model.root_object)
-
-        # queue the job to set active notifications
-        if not self.configure_device_parameter_attributes(reason=reason, parameterlist=parameterlist, update_parameterkey=True):
-            self.acs_log('error, unable to create acs job to configure parameter attributes for %s' % self.acs_device)
-            return False
+        supported_rpc_methods = related_device.get_supported_rpc_methods()
+        if "SetParameterValues" in supported_rpc_methods:
+            if not self.configure_device_parameter_values(reason=reason, update_parameterkey=True):
+                self.acs_log('error, unable to create acs job to configure device parameter values for %s' % self.acs_device)
+                return False
+        if "SetParameterAttributes" in supported_rpc_methods:
+            # get the list of parameters we want to set notification on
+            parameterlist = self.acs_device.model.get_active_notification_parameterlist(self.root_data_model.root_object)
+            # queue the job to set active notifications
+            if not self.configure_device_parameter_attributes(reason=reason, parameterlist=parameterlist, update_parameterkey=True):
+                self.acs_log('error, unable to create acs job to configure parameter attributes for %s' % self.acs_device)
+                return False
 
         # all done
         return True
@@ -358,20 +360,20 @@ class AcsSession(AcsBaseModel):
         # return true even if we didn't find any eventcodes
         return True
 
-    def get_latest_rpc_get_response(self, response_name):
+    def get_latest_rpc_get_response(self, rpc_get_method):
         """
-        Loop over the http requests with given response name ('GetParameterNamesResponse',
+        Get specific response according to rpc get method ('GetParameterNamesResponse',
         'GetParameterValuesResponse', 'GetParameterAttributesResponse') in this acs session and find
         the latest asking for the whole device tree
         """
-        if response_name == "GetParameterNamesResponse":
+        if rpc_get_method == "GetParameterNames":
             return self.get_all_names_rpc_response()
-        elif response_name == "GetParameterValuesResponse":
+        elif rpc_get_method == "GetParameterValues":
             return self.get_all_values_rpc_response()
-        elif response_name == "GetParameterAttributesResponse":
+        elif rpc_get_method == "GetParameterAttributes":
             return self.get_all_attributes_rpc_response()
         else:
-            self.acs_log("Not returning latest rpc get response as response name is unknown: %s " % response_name)
+            self.acs_log("Not returning latest rpc get response as response name is unknown: %s " % rpc_get_method)
             return False
 
     def get_all_names_rpc_response(self):
