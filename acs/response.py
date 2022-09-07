@@ -75,7 +75,7 @@ def get_soap_xml_object(cwmp_rpc_method, datadict=None, update_parameterkey=Fals
 
     elif cwmp_rpc_method=='SetParameterAttributes':
         if not datadict:
-            logger.error('datadict needed for SetParameterValues, returning False')
+            logger.error('datadict needed for SetParameterAttributes, returning False')
             return False
         paramlist = etree.SubElement(soapobject, 'ParameterList')
         for name, value in datadict.items():
