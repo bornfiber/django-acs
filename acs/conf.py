@@ -43,7 +43,6 @@ class AcsDefaultSettings:
     """
     INFORM_LIMIT_PER_INTERVAL = 2
     INFORM_INTERVAL = 3600
-    ACS_MANAGED_UPGRADES = True
 
     # supported CWMP namespaces
     CWMP_NAMESPACES = [
