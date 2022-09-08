@@ -37,3 +37,57 @@ default_acs_device_parametermap = {
     "django_acs.wifi.n_channel": "WiFi.Radio.2.Channel",
 }
 
+### TR098 MAP
+
+tr098_acs_device_parametermap = {
+    # acs server stuff
+    "django_acs.acs.informinterval": "ManagementServer.PeriodicInformInterval",
+    "django_acs.acs.acs_managed_upgrades": "ManagementServer.UpgradesManaged",
+    "django_acs.acs.connection_request_user": "ManagementServer.ConnectionRequestUsername",
+    "django_acs.acs.connection_request_password": "ManagementServer.ConnectionRequestPassword",
+    "django_acs.acs.parameterkey": "ManagementServer.ParameterKey",
+    "django_acs.acs.connrequrl": "ManagementServer.ConnectionRequestURL",
+
+    # acs server xmpp stuff
+    "django_acs.acs.xmpp_server": "",
+    "django_acs.acs.xmpp_server_port": "",
+    "django_acs.acs.xmpp_connection_enable": "XMPP.Connection.1.Enable",
+    "django_acs.acs.xmpp_connection_username": "XMPP.Connection.1.Username",
+    "django_acs.acs.xmpp_connection_password": "XMPP.Connection.1.Password",
+    "django_acs.acs.xmpp_connection_domain": "XMPP.Connection.1.Domain",
+    "django_acs.acs.xmpp_connection_usetls": "XMPP.Connection.1.UseTLS",
+    "django_acs.acs.xmpp_connreq_connection": "",
+
+    # device info
+    "django_acs.deviceinfo.softwareversion": "DeviceInfo.SoftwareVersion",
+    "django_acs.deviceinfo.uptime": "DeviceInfo.UpTime",
+
+    # wifi 2.4g
+    "django_acs.wifi.bg_enable": "LANDevice.1.WLANConfiguration.1.Enable",
+    "django_acs.wifi.bg_ap_enable": "",
+    "django_acs.wifi.bg_ssid": "LANDevice.1.WLANConfiguration.1.SSID",
+    "django_acs.wifi.bg_wpapsk": "LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase",
+    "django_acs.wifi.bg_autochannel": "LANDevice.1.WLANConfiguration.1.AutoChannelEnable",
+    "django_acs.wifi.bg_channel": "LANDevice.1.WLANConfiguration.1.Channel",
+    "django_acs.wifi.bg_bandwidth": "",
+    "django_acs.wifi.bg_mode": "",
+    "django_acs.wifi.bg_ssidbroadcast": "",
+    "django_acs.wifi.bg_securitymode": "",
+    "django_acs.wifi.bg_algorithm": "",
+
+    # wifi 5g
+    "django_acs.wifi.n_enable": "LANDevice.1.WLANConfiguration.2.Enable",
+    "django_acs.wifi.n_ap_enable": "",
+    "django_acs.wifi.n_ssid": "LANDevice.1.WLANConfiguration.2.SSID",
+    "django_acs.wifi.n_wpapsk": "LANDevice.1.WLANConfiguration.2.PreSharedKey.1.KeyPassphrase",
+    "django_acs.wifi.n_autochannel": "LANDevice.1.WLANConfiguration.2.AutoChannelEnable",
+    "django_acs.wifi.n_channel": "LANDevice.1.WLANConfiguration.2.Channel",
+    "django_acs.wifi.n_bandwidth": "",
+    "django_acs.wifi.n_mode": "",
+    "django_acs.wifi.n_ssidbroadcast": "",
+    "django_acs.wifi.n_securitymode": "",
+    "django_acs.wifi.n_algorithm": "",
+}
+
+
+

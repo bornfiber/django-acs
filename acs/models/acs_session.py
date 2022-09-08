@@ -120,6 +120,7 @@ class AcsSession(AcsBaseModel):
         """
         parameterdict = {}
         for key in list(configdict.keys()):
+            if self.get_acs_parameter_name(key) in ["Device.","InternetGatewayDevice."]: continue
             parameterdict[self.get_acs_parameter_name(key)] = configdict[key]
         return parameterdict
 
