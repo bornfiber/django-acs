@@ -403,6 +403,10 @@ class AcsServerView(View):
                     for rpc_get_method in supported_rpc_get_methods:
                         if not acs_session.get_latest_rpc_get_response(rpc_get_method=rpc_get_method):
                             supported_rpc_get_methods_done = False
+                        # Not so fast, we might still have pending jobs for information collection.
+                        if acs_session.acs_device.acs_queue_jobs.filter(processed=False).exists():
+                            acs_session.acs_log("Suppressing update_device_acs_parameters, as there still are unprocessed jobs.")
+                            supported_rpc_get_methods_done = False
 
                     if supported_rpc_get_methods_done:
                         # attempt to update the device acs parameters
@@ -484,10 +488,21 @@ class AcsServerView(View):
                         acs_session.acs_device.desired_config_level = None
                     acs_session.acs_device.save()
 
+                elif acs_http_request.cwmp_rpc_method == 'AddObjectResponse':
+                    ### find status
+                    status = rpcresponsexml.find('Status').text
+                    ### Status 0 is succesfully applied, status 1 is succesfully applied but cpe will reboot automatically to apply changes
+                    if status not in ['0', '1']:
+                        ### ACS client failed to apply all our settings, fuckery is afoot!
+                        message = 'The ACS device %s failed to apply our AddObject, something is wrong!' % acs_device
+                        acs_session.acs_log(message)
+                        return HttpResponseBadRequest(message)
+
                 elif acs_http_request.cwmp_rpc_method == 'FactoryResetResponse':
                     empty_response=True
 
                 ### we are done processing the clients response, do we have anything else?
+                print(f"Pulling next response from the queue, empty_response={empty_response}")
                 response = acs_http_request.get_response(empty_response=empty_response)
             else:
                 #####################################################################################################

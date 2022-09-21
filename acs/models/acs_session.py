@@ -120,8 +120,17 @@ class AcsSession(AcsBaseModel):
         """
         parameterdict = {}
         for key in list(configdict.keys()):
-            if self.get_acs_parameter_name(key) in ["Device.","InternetGatewayDevice."]: continue
-            parameterdict[self.get_acs_parameter_name(key)] = configdict[key]
+            # Try to retreive the paramter name
+            try:
+                acs_parameter_name = self.get_acs_parameter_name(key)
+            except KeyError:
+                # We did not find it, we dont care... no mapping no cookies..
+                continue
+
+            # Skip values that map to an empty paramtername.
+            if acs_parameter_name in ["Device.","InternetGatewayDevice."]: continue
+
+            parameterdict[acs_parameter_name] = configdict[key]
         return parameterdict
 
     def configure_device_parameter_attributes(self, reason, parameterlist, update_parameterkey=False):
@@ -209,6 +218,18 @@ class AcsSession(AcsBaseModel):
         # we need to update parameterkey in both calls even though we have more work to do,
         # because it appears the parameterkey is not updated after a SetParameterAttributes call for some reason
         supported_rpc_methods = related_device.get_supported_rpc_methods()
+
+        # Test if we need to ad some objects
+        if "AddObject" in supported_rpc_methods:
+            parameternames_to_add = self.check_paramter_exists()
+            if parameternames_to_add:
+                print("We need to call AddObject")
+                if not self.acs_rpc_add_object(reason=reason, objectname=parameternames_to_add[0]):
+                    self.acs_log('error, unable to create acs job to AddObject:%s device parameter values for %s' % (parameternames_to_add[0].self.acs_device))
+                # Requeue collect_device_info, as we need to see the added objects.
+                self.collect_device_info("Collecting information triggered by AddObjectResponse")
+                return True
+
         if "SetParameterValues" in supported_rpc_methods:
             if not self.configure_device_parameter_values(reason=reason, update_parameterkey=True):
                 self.acs_log('error, unable to create acs job to configure device parameter values for %s' % self.acs_device)
@@ -685,10 +706,66 @@ class AcsSession(AcsBaseModel):
         self.acs_log("Finished processing %s acs parameters in session %s for device %s" % (paramcount, self, acs_device))
         return True
 
+    def check_paramter_exists(self):
+        '''
+        This method validates that parameters that should be set, already exist on the device.
+        It returns None if nothing needs to be added with an AddObject command.
+        It returns False if there is an error, eg. we are alredy past the index we want to add.
+        It returns the paramtername that needs an AddObject command.
+        '''
+        configdict = self.acs_device.get_related_device().get_acs_config()
+        device_parameterdict = self.get_device_parameterdict(configdict)
+        acs_parameterdict = self.acs_device.acs_parameter_dict
+
+        # Create a list of missing paramternames that are not already in the device.
+        missing_parmeternames = [k for k in device_parameterdict.keys() if k not in acs_parameterdict.keys()]
+
+        print("Missing parmeternames, that need further examination. :")
+        print('\n'.join(missing_parmeternames))
+        print("----")
+
+        # Prepare a set of missing paramtername_add_list
+        parametername_add_set = set()
+
+        # Iterate over each missing paramtername
+        for cur_missing_parametername in missing_parmeternames:
+            # Split the missing paramtername into its elements
+            cur_missing_paramtername_elements = cur_missing_parametername.split('.')
+
+            # Progressively lengthen the paramtername from 3 elements up to full length.
+            # We start at 3 elements, as this is the first possible location for an index.
+            for num_key_elements in range(2,len(cur_missing_paramtername_elements)):
+                # Test if the last element is a numer, if not it is not an index and we can test the next length.
+                if not cur_missing_paramtername_elements[num_key_elements].isdigit():
+                    continue
+
+                index_string =  cur_missing_paramtername_elements[num_key_elements]
+                shortened_paramtername = '.'.join(cur_missing_paramtername_elements[:num_key_elements])
+
+                # Check if he parametername we want is a substring of an already exsising parametername in the device.
+                is_substring = False
+
+                for k in acs_parameterdict.keys():
+                    if k.startswith(f"{shortened_paramtername}.{index_string}"):
+                        # We found the shortened name as an exsisting substring in the device, so it does not need to be added.
+                        # We must be missing an index furher down the paramtername.
+                        is_substring = True
+                        break
+
+                # Try to test the next longer paramtername
+                if is_substring:
+                    continue
+
+                # Add the shortened parametername to the set af parameternames that need to be added.
+                parametername_add_set.add(f"{shortened_paramtername}.")
+                # Break out of the loop, and examine the next missing parametername in missing_parmeternames.
+                break
+
+        return sorted(parametername_add_set,key=len)
 
 ###########################################################################################################
 ### ACS RPC METHODS BELOW HERE
-
+    
     ### GetRPCMethods
     def acs_rpc_get_rpc_methods(self, reason, automatic=False, urgent=False):
         job = self.add_acs_queue_job(
@@ -855,5 +932,4 @@ class AcsSession(AcsBaseModel):
             automatic=automatic,
         )
         return job
-
 
