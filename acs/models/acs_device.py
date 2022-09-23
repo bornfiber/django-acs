@@ -278,7 +278,10 @@ class AcsDevice(AcsBaseModel):
 
         ### do the request
         try:
-            return requests.get(url, auth=requests.auth.HTTPBasicAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
+            if self.model.acs_connectionrequest_digest_auth:
+                return requests.get(url, auth=requests.auth.HTTPDigestAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
+            else:
+                return requests.get(url, auth=requests.auth.HTTPBasicAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
         except requests.exceptions.ConnectionError as E:
             ### catching this exception is neccesary because requests does not catch the exception which httplib returns,
             ### because our HTTP servers are closing connection "too fast" without ever sending an HTTP response
