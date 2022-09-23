@@ -79,7 +79,7 @@ class AcsServerView(View):
         validxml=False
         if request.body:
             try:
-                xmlroot = fromstring(request.body)
+                xmlroot = fromstring(request.body.decode('utf-8','ignore').encode('utf-8'))
                 validxml=True
             except Exception as E:
                 acs_session.acs_log('got exception parsing ACS XML: %s' % E)

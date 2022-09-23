@@ -62,7 +62,7 @@ class AcsSession(AcsBaseModel):
         try:
             job, created = AcsQueueJob.objects.get_or_create(
                 acs_device=self.acs_device,
-                cwmp_rpc_object_xml=cwmp_rpc_object_xml.decode('utf-8'),
+                cwmp_rpc_object_xml=cwmp_rpc_object_xml.decode('utf-8','ignore'),
                 processed=False,
                 urgent=urgent,
                 defaults={
@@ -700,7 +700,7 @@ class AcsSession(AcsBaseModel):
             root.append(param)
 
         ### alright, save the tree
-        acs_device.acs_parameters = etree.tostring(root, xml_declaration=True).decode('utf-8')
+        acs_device.acs_parameters = etree.tostring(root, xml_declaration=True).decode('utf-8','ignore')
         acs_device.acs_parameters_time = timezone.now()
         acs_device.save()
         self.acs_log("Finished processing %s acs parameters in session %s for device %s" % (paramcount, self, acs_device))
