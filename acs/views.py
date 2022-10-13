@@ -88,6 +88,7 @@ class AcsServerView2(View):
 
         hook_list = [
             (_process_inform,"_process_inform"),
+            (_preconfig,"_preconfig"),
             (_verify_client_ip,"_verify_client_ip"),
             (_device_firmware_upgrade,"_device_firmware_upgrade"),
         ]
@@ -143,11 +144,24 @@ class AcsServerView2(View):
 
 ### AcsServerView2 helper functions ###
 
+def _preconfig(acs_http_request,hook_state):
+
+    model_preconfig = '''
+
+    '''
+
+
 def _device_firmware_upgrade(acs_http_request,hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
     if 'firmware_ok' in hook_state.keys():
+        return None,None,hook_state
+
+    if 'download_ok' in hook_state.keys():
+        return None,None,hook_state
+
+    if 'download_failed' in hook_state.keys():
         return None,None,hook_state
 
     if 'download_cwmp_id' in hook_state.keys():
@@ -162,12 +176,15 @@ def _device_firmware_upgrade(acs_http_request,hook_state):
                 if status_code.text in ['0','1']:
                     logger.info(f"{acs_session}: {acs_device} responded with status_code: {status_code.text} in DownloadResponse.")
                     hook_state['download_ok'] = str(timezone.datetime.now())
+                else:
+                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status_code.text} in DownloadResponse.")
+                    hook_state['download_failed'] = str(timezone.datetime.now())
 
             return None,None,hook_state
 
-    if acs_device.current_software_version != ad.get_desired_software_version():
+    if acs_device.current_software_version != acs_device.get_desired_software_version():
         # If we need a different software we upgrade the device.
-        logger.info(f"{acs_session}: Updating firmware on {acs_device}, {acs_device.current_software_version} -> {ad.get_desired_software_version()}")
+        logger.info(f"{acs_session}: Updating firmware on {acs_device}, {acs_device.current_software_version} -> {acs_device.get_desired_software_version()}")
         response_cwmp_id = uuid.uuid4().hex
         root, body = get_soap_envelope(response_cwmp_id, acs_session)
         software_url = acs_device.get_software_url(version=acs_device.get_desired_software_version())
@@ -203,6 +220,7 @@ def _verify_client_ip(acs_http_request,hook_state):
 
 def _process_inform(acs_http_request,hook_state):
     acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
 
     # Check the hook_state
     if acs_http_request.cwmp_rpc_method == 'Inform' and 'inform_received' in hook_state.keys():
@@ -222,18 +240,30 @@ def _process_inform(acs_http_request,hook_state):
         hook_state['inform_done'] = str(timezone.datetime.now())
         return None,None,hook_state
 
+    elif acs_http_request.cwmp_rpc_method == 'TransferComplete':
+        logger.info(f"{acs_session}: {acs_device} sent a TransferComplete message.")
+
+        # Inform processed OK, prepare a response
+        root, body = get_soap_envelope(acs_http_request.cwmp_id, acs_session)
+        cwmp = etree.SubElement(body, nse('cwmp', 'TransferCompleteResponse'))
+        ### add the inner response elements, without namespace (according to cwmp spec!)
+        maxenv = etree.SubElement(cwmp, 'MaxEnvelopes')
+        maxenv.text = '1'
+        hook_state['transfer_complete'] = str(timezone.datetime.now())
+        return root,body,hook_state
+
     elif acs_http_request.cwmp_rpc_method != 'Inform':
         # If we receive anything that is not an inform, throw an error.
         logger.info(f"{acs_session}: The session must begin with an inform. Request {acs_http_request} is not an inform.")
         return False,None,hook_state
+
 
     # If we make to here, we process the inform.
     # A session has to begin with an inform, so if we get anything else we throw an error.
 
 
     ### get Inform xml element
-    if acs_http_request.cwmp_rpc_method == 'Inform':
-        inform = acs_http_request.soap_body.find('cwmp:Inform', acs_session.soap_namespaces)
+    inform = acs_http_request.soap_body.find('cwmp:Inform', acs_session.soap_namespaces)
 
 
     ### determine which data model version this device is using
