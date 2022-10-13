@@ -12,6 +12,7 @@ class AcsDeviceModel(AcsBaseModel):
     desired_config_level = models.DateTimeField(null=True, blank=True)
     desired_software_version = models.CharField(max_length=50, blank=True)
     acs_parameter_map_overrides = JSONField(null=True, blank=True)
+    acs_connectionrequest_digest_auth = models.BooleanField(default=False)
 
     def __str__(self):
         return str("%s - %s" % (self.tag, self.name))
@@ -32,7 +33,7 @@ class AcsDeviceModel(AcsBaseModel):
         based on the category of devicemodel
         """
         parameterlist = []
-        if self.category.name == "WIFI":
+        if self.category.name in ["WIFI", "MODEM"]:
             #This acs device category needs notifications for the whole Wifi tree
             parameterlist.append("%s.Wifi." % root_object)
         return parameterlist

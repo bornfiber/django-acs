@@ -472,8 +472,9 @@ class AcsServerView(View):
         if 'acs_session_id' in request.COOKIES:
             hexid = request.COOKIES['acs_session_id']
             try:
-                acs_session = AcsSession.objects.get(acs_session_id=hexid)
-                acs_session.acs_log("got acs_session_id from acs_session_id cookie")
+                ### do we have an unfinished acs session
+                acs_session = AcsSession.objects.get(acs_session_id=hexid, session_result=False)
+                acs_session.acs_log("got acs_session_id from acs_session_id cookie (ip: %s)" % (ip))
             except AcsSession.DoesNotExist:
                 ### create a new AcsSession? only if we haven't already got enough sessions from this client ip
                 sessions_since_informinterval = AcsSession.objects.filter(
@@ -490,7 +491,7 @@ class AcsServerView(View):
                     client_ip=ip,
                 )
                 hexid = acs_session.hexid
-                acs_session.acs_log("got invalid acs_session_id %s from acs_session_id cookie, new acs session created" % request.COOKIES['acs_session_id'])
+                acs_session.acs_log("got invalid acs_session_id %s from acs_session_id cookie, new acs session created (ip: %s)" % (request.COOKIES['acs_session_id'], ip))
         else:
             ### no acs_session_id cookie seen, create a new AcsSession? only if we haven't already got enough sessions from this client ip
             sessions_since_informinterval = AcsSession.objects.filter(
@@ -508,13 +509,13 @@ class AcsServerView(View):
             )
             ### and save the acs session ID (uuid.hex()) in the django session for later use
             hexid = acs_session.acs_session_id.hex
-            acs_session.acs_log("created new acs session (had %s sessions in the latest informinterval)" % sessions_since_informinterval)
+            acs_session.acs_log("created new acs session (had %s sessions in the latest informinterval, ip: %s)" % (sessions_since_informinterval, ip))
 
         ### do we have a body in this http request? attempt parsing it as XML if so
         validxml=False
         if request.body:
             try:
-                xmlroot = fromstring(request.body)
+                xmlroot = fromstring(request.body.decode('utf-8','ignore').encode('utf-8'))
                 validxml=True
             except Exception as E:
                 acs_session.acs_log('got exception parsing ACS XML: %s' % E)
@@ -656,14 +657,20 @@ class AcsServerView(View):
 
                     ### find or create acs devicevendor (using Manufacturer and OUI)
                     acs_devicevendor, created = AcsDeviceVendor.objects.get_or_create(
-                        name = vendor,
+                        name__iexact = vendor,
                         oui = oui,
+                        defaults = {
+                            "name": vendor,
+                        }
                     )
 
                     ### find or create acs devicetype (using ProductClass)
                     acs_devicemodel, created = AcsDeviceModel.objects.get_or_create(
                         vendor = acs_devicevendor,
-                        name = model,
+                        name__iexact = model,
+                        defaults = {
+                            "name": model,
+                        }
                     )
 
                     ### find or create acs device (using serial number and acs devicetype)
@@ -750,7 +757,7 @@ class AcsServerView(View):
                     ### This is where we do things we want do _after_ an Inform session.
                     ### Queue jobs here before sending InformResponse and they will be run in the same session.
 
-                    # queue GetParameterNames, GetParameterValues, GetParameterAttributes
+                    # queue any supported GetParameterNames, GetParameterValues, GetParameterAttributes
                     if not acs_session.collect_device_info("Collecting information triggered by Inform"):
                         # unable to queue neccesary job
                         return HttpResponseServerError()
@@ -811,49 +818,76 @@ class AcsServerView(View):
                 ### parse the cwmp object from the soap body
                 rpcresponsexml = soap_body.find('cwmp:%s' % acs_http_request.cwmp_rpc_method, acs_session.soap_namespaces)
 
-                if acs_http_request.cwmp_rpc_method == 'GetParameterNamesResponse':
-                    ### do nothing for now, the response will be used when the GetParameterValuesResponse comes in later
-                    pass
+                # get cwmp rpc get methods (['GetParameterNames', 'GetParameterValues', 'GetParameterAttributes'])
+                cwmp_rpc_get_methods = settings.CWMP_CPE_UNIQUE_RPC_GET_METHODS
+                # sometimes not all of these are supported by a given device
+                # when the supported methods are done we handle all data from device
+                # supported methods can be modified by overwriting method
+                # "get_supported_rpc_methods" found in AcsDeviceBaseModel (on related device)
+                related_device = acs_session.acs_device.get_related_device()
+                if related_device:
+                    # get intersection of cwmp_rpc_get_methods and supported methods
+                    supported_rpc_get_methods = set(cwmp_rpc_get_methods).intersection(related_device.get_supported_rpc_methods())
+                else:
+                    # assume all is supported
+                    supported_rpc_get_methods = cwmp_rpc_get_methods
 
-                elif acs_http_request.cwmp_rpc_method == 'GetParameterValuesResponse':
-                    # nothing here for now
-                    pass
+                if acs_http_request.cwmp_rpc_method[:-8] in cwmp_rpc_get_methods:
+                    # when request is a cwmp_rpc_get_method we check if all supported
+                    # methods have been called and if so we proceed
+                    supported_rpc_get_methods_done = True
+                    for rpc_get_method in supported_rpc_get_methods:
+                        if not acs_session.get_latest_rpc_get_response(rpc_get_method=rpc_get_method):
+                            supported_rpc_get_methods_done = False
+                        # Not so fast, we might still have pending jobs for information collection.
+                        if acs_session.acs_device.acs_queue_jobs.filter(processed=False).exists():
+                            acs_session.acs_log("Suppressing update_device_acs_parameters, as there still are unprocessed jobs.")
+                            supported_rpc_get_methods_done = False
 
-                elif acs_http_request.cwmp_rpc_method == 'GetParameterAttributesResponse':
-                    # this is a GetParameterAttributesResponse, attempt to update the device acs parameters
-                    if acs_session.acs_device.update_acs_parameters(acs_http_request):
-                        #################################################################################################
-                        ### this is where we do things to and with the recently fetched acs parameters from the device,
-                        ### like configuring the device or handling user config changes
-                        ### Queue jobs here before sending GetParameterAttributesResponse and they will be run in the same session.
+                    if supported_rpc_get_methods_done:
+                        # attempt to update the device acs parameters
+                        if acs_session.update_device_acs_parameters():
+                            #################################################################################################
+                            ### this is where we do things to and with the recently fetched acs parameters from the device,
+                            ### like configuring the device or handling user config changes
+                            ### Queue jobs here before sending GetParameterAttributesResponse and they will be run in the same session.
 
-                        # extract device uptime from acs_device.acs_parameters and save it to acs_session.device_uptime
-                        acs_session.update_device_uptime()
+                            # extract device uptime from acs_device.acs_parameters and save it to acs_session.device_uptime
+                            acs_session.update_device_uptime()
 
-                        # check if we need to call the handle_user_config_changes() method on the acs_device,
-                        # we only check for user changes if a device has been configured by us already, and doesn't need any more config at the moment
-                        if acs_session.acs_device.current_config_level and acs_session.acs_device.current_config_level > acs_session.acs_device.get_desired_config_level():
-                            # device is already configured, and doesn't need additional config from us right now, so check if the user changed anything on the device, and act accordingly
-                            acs_session.acs_device.handle_user_config_changes()
+                            # check if we need to call the handle_user_config_changes() method on the acs_device,
+                            # we only check for user changes if a device has been configured by us already, and doesn't need any more config at the moment
+                            current_config_level = acs_session.acs_device.current_config_level
+                            desired_config_level = acs_session.acs_device.get_desired_config_level()
+                            if current_config_level and (not desired_config_level or current_config_level > desired_config_level):
+                                # device is already configured, and doesn't need additional config from us right now, so check if the user changed anything on the device, and act accordingly
+                                acs_session.acs_device.handle_user_config_changes()
 
-                        # refresh to get any changes from above
-                        acs_session.refresh_from_db()
+                            # refresh to get any changes from above
+                            acs_session.refresh_from_db()
 
-                        # if this device has been reconfigured in this session we collect data again,
-                        # if not, we reconfigure it if needed
-                        if acs_session.configuration_done:
-                            # device has been configured, so collect data again so we have the latest (unless we have already done so)
-                            if not acs_session.post_configuration_collection_done:
-                                if not acs_session.collect_device_info(reason="Device has been reconfigured"):
-                                    acs_session.acs_log("Unable to queue one or more jobs to collect info after configuration")
+                            # if this device has been reconfigured in this session we collect data again,
+                            # if not, we reconfigure it if needed
+                            if acs_session.configuration_done:
+                                # device has been configured, so collect data again so we have the latest (unless we have already done so)
+                                if not acs_session.post_configuration_collection_done:
+                                    if not acs_session.collect_device_info(reason="Device has been reconfigured"):
+                                        acs_session.acs_log("Unable to queue one or more jobs to collect info after configuration")
+                                        return HttpResponseServerError()
+                            else:
+                                # this device has not been configured in this ACS session. This is where we check if we need to configure it now.
+                                # acs_session.configure_device returns False if there was a problem configuring the device, and true if
+                                # the device was configured, or did not need to be configured
+                                if not acs_session.configure_device():
+                                    # there was a problem creating configure jobs for the device
                                     return HttpResponseServerError()
                         else:
-                            # this device has not been configured in this ACS session. This is where we check if we need to configure it now.
-                            # acs_session.configure_device returns False if there was a problem configuring the device, and true if
-                            # the device was configured, or did not need to be configured
-                            if not acs_session.configure_device():
-                                # there was a problem creating configure jobs for the device
-                                return HttpResponseServerError()
+                            # acs_parameters could not be updated, do nothing more
+                            pass
+                    else:
+                        ### do nothing for now, the response will be used when all supported_rpc_get_methods are done
+                        pass
+
 
                 elif acs_http_request.cwmp_rpc_method == 'GetRPCMethodsResponse':
                     pass
@@ -861,17 +895,25 @@ class AcsServerView(View):
                 elif acs_http_request.cwmp_rpc_method == 'SetParameterValuesResponse':
                     ### find status
                     status = rpcresponsexml.find('Status').text
-                    if status != '0':
+                    ### Status 0 is succesfully applied, status 1 is succesfully applied but cpe will reboot automatically to apply changes
+                    if status not in ['0', '1']:
                         ### ACS client failed to apply all our settings, fuckery is afoot!
                         message = 'The ACS device %s failed to apply our SetParameterValues settings, something is wrong!' % acs_device
                         acs_session.acs_log(message)
                         return HttpResponseBadRequest(message)
 
-                    ### find the parameterkey and update the acs_device so we know its current_config_level
-                    ### since this is a SetParameterValuesResponse we will probably get settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE here,
-                    ### which is fine(tm)
-                    parameterkey = acs_http_request.rpc_response_to.soap_body.find('cwmp:SetParameterValues', acs_session.soap_namespaces).find('ParameterKey').text
-                    acs_session.acs_device.current_config_level = parse_datetime(parameterkey)
+                    if acs_http_request.rpc_response_to.soap_body:
+                        ### find the parameterkey and update the acs_device so we know its current_config_level
+                        ### since this is a SetParameterValuesResponse we will probably get settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE here,
+                        ### which is fine(tm)
+                        parameterkey = acs_http_request.rpc_response_to.soap_body.find('cwmp:SetParameterValues', acs_session.soap_namespaces).find('ParameterKey').text
+                        acs_session.acs_device.current_config_level = parse_datetime(parameterkey)
+                    else:
+                        ### soap_body of rpc_response_to object is gone.
+                        ### probably deleted during nightly clean up (to minimize disk usage)
+                        message = 'The soap body that this http request is in response to is gone. Probably deleted during nightly clean up!'
+                        acs_session.acs_log(message)
+                        return HttpResponseBadRequest(message)
 
                 elif acs_http_request.cwmp_rpc_method == 'SetParameterAttributesResponse':
                     ### find the parameterkey and update the acs_device so we know its current_config_level
@@ -882,10 +924,21 @@ class AcsServerView(View):
                         acs_session.acs_device.desired_config_level = None
                     acs_session.acs_device.save()
 
+                elif acs_http_request.cwmp_rpc_method == 'AddObjectResponse':
+                    ### find status
+                    status = rpcresponsexml.find('Status').text
+                    ### Status 0 is succesfully applied, status 1 is succesfully applied but cpe will reboot automatically to apply changes
+                    if status not in ['0', '1']:
+                        ### ACS client failed to apply all our settings, fuckery is afoot!
+                        message = 'The ACS device %s failed to apply our AddObject, something is wrong!' % acs_device
+                        acs_session.acs_log(message)
+                        return HttpResponseBadRequest(message)
+
                 elif acs_http_request.cwmp_rpc_method == 'FactoryResetResponse':
                     empty_response=True
 
                 ### we are done processing the clients response, do we have anything else?
+                print(f"Pulling next response from the queue, empty_response={empty_response}")
                 response = acs_http_request.get_response(empty_response=empty_response)
             else:
                 '''

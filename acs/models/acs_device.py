@@ -151,19 +151,28 @@ class AcsDevice(AcsBaseModel):
 
         logger.debug(attributes_rpc_response)
 
-        # 1) check if this GetParameterAtrributesResponse is a response to a GetParameterAtrributes RPC call for the whole tree...
-        if attributes_rpc_response.rpc_response_to.soap_body.find('cwmp:GetParameterAttributes', acs_session.soap_namespaces).xpath('.//string[text()="%s."]' % acs_session.root_data_model.root_object) is None:
+        ### 1) check if attributes_rpc_response.rpc_response_to.soap_body returns False
+        ### and then check if this GetParameterAtrributesResponse is a response to a GetParameterAtrributes RPC call for the whole tree...
+        if attributes_rpc_response.rpc_response_to.soap_body == False:
+            acs_session.acs_log("GetParameterAttributesResponse seen, but the request it is a response to (%s) has no soap body. - not updating acs_device.acs_parameter" % attributes_rpc_response.rpc_response_to)
+            return False
+        elif attributes_rpc_response.rpc_response_to.soap_body.find('cwmp:GetParameterAttributes', acs_session.soap_namespaces).xpath('.//string[text()="%s."]' % acs_session.root_data_model.root_object) is None:
             acs_session.acs_log("GetParameterAttributesResponse seen, but it is not a response to a GetParameterAttributes for '%s.' - not updating acs_device.acs_parameter" % acs_session.root_data_model.root_object)
             return False
 
+        ### 2) check if attributes_rpc_response.soap_body returns False
+        if attributes_rpc_response.soap_body == False:
+            acs_session.acs_log("GetParameterAttributesResponse seen, but it has no soap body. - not updating acs_device.acs_parameter")
+            return False
+
         ### check if we have the other two required responses in this acs session, so we can build the tree for this device.
-        ### 2) Did we also complete a GetParameterValues call for the full tree in this acs session?
+        ### 3) Did we also complete a GetParameterValues call for the full tree in this acs session?
         values_rpc_response = acs_session.get_all_values_rpc_response()
         if not values_rpc_response:
             acs_session.acs_log("No GetParameterValues for the full tree found in this session, not updating acs_device.acs_parameters")
             return False
 
-        ### 3) Did we also complete a GetParameterNames RPC with parampath='' and nextlevel=0 in this acs session?
+        ### 4) Did we also complete a GetParameterNames RPC with parampath='' and nextlevel=0 in this acs session?
         names_rpc_response = acs_session.get_all_names_rpc_response()
 
         if not names_rpc_response:
@@ -191,28 +200,34 @@ class AcsDevice(AcsBaseModel):
         root = etree.Element("DjangoAcsParameterCache")
         ### loop through all params in valuesrequest
         paramcount = 0
+        param_omitted_count = 0
         for param in values_rpc_response.soap_body.find('cwmp:GetParameterValuesResponse', acs_session.soap_namespaces).find('ParameterList').getchildren():
             paramname = param.xpath("Name")[0].text
             paramcount += 1
 
-            writable = etree.Element("Writable")
-            if paramname in writabledict:
+            # not all params have a lifetime that lasts until values are retrieved
+            # in which case they are omitted
+            if paramname in attributedict:
+                writable = etree.Element("Writable")
                 # add writable value if we can find it
-                writable.text = writabledict[paramname]
-            param.append(writable)
+                if paramname in writabledict:
+                    writable.text = writabledict[paramname]
+                param.append(writable)
 
-            # append acl and notification (and any future attributes that may appear) to our tree
-            for attrib in attributedict[paramname]:
-                param.append(attrib)
+                # append acl and notification (and any future attributes that may appear) to our tree
+                for attrib in attributedict[paramname]:
+                    param.append(attrib)
 
-            # append this to the tree
-            root.append(param)
+                # append this to the tree
+                root.append(param)
+            else:
+                param_omitted_count += 1
 
         ### alright, save the tree
         self.acs_parameters = etree.tostring(root, xml_declaration=True).decode('utf-8')
         self.acs_parameters_time = timezone.now()
         self.save()
-        acs_session.acs_log("Finished processing %s acs parameters for device %s" % (paramcount, self))
+        acs_session.acs_log("Finished processing %s acs parameters (%s parameters omitted) for device %s" % (paramcount, param_omitted_count, self))
         return True
 
     @property
@@ -228,7 +243,7 @@ class AcsDevice(AcsBaseModel):
                 'value': value.text,
                 'writable': child.find('Writable').text,
                 'notification': child.find('Notification').text if child.find('Notification') is not None else "N/A",
-                'accesslist': ",".join([acl.text for acl in child.find('AccessList').getchildren()]) if child.find('AccessList') is not None else "N/A",
+                'accesslist': ",".join([acl.text if acl.text is not None else "N/A" for acl in child.find('AccessList').getchildren()]) if child.find('AccessList') is not None else "N/A",
             }
         return OrderedDict(sorted(paramdict.items()))
 
@@ -263,7 +278,10 @@ class AcsDevice(AcsBaseModel):
 
         ### do the request
         try:
-            return requests.get(url, auth=requests.auth.HTTPBasicAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
+            if self.model.acs_connectionrequest_digest_auth:
+                return requests.get(url, auth=requests.auth.HTTPDigestAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
+            else:
+                return requests.get(url, auth=requests.auth.HTTPBasicAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
         except requests.exceptions.ConnectionError as E:
             ### catching this exception is neccesary because requests does not catch the exception which httplib returns,
             ### because our HTTP servers are closing connection "too fast" without ever sending an HTTP response
@@ -317,7 +335,7 @@ class AcsDevice(AcsBaseModel):
             devicemodel = apps.get_model(acsmodel['app'], acsmodel['model'])
             args = {
                 acsmodel['serial_field']: self.serial,
-                acsmodel['model_name_field']: self.model.name,
+                acsmodel['model_productclass_field']: self.model.name,
                 acsmodel['vendor_name_field']: self.model.vendor.name,
                 '%s__isnull' % acsmodel['acsdevice_relation_field']: True
             }

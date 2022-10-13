@@ -87,3 +87,4 @@ beacon_acs_device_parametermap = {
     "django_acs.wifi.n_ssidbroadcast": "",
     "django_acs.wifi.n_wpapsk": "LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase"
 }
+
