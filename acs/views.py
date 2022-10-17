@@ -146,10 +146,101 @@ class AcsServerView2(View):
 
 def _preconfig(acs_http_request,hook_state):
 
-    model_preconfig = '''
+    if "preconfig_sent" in hook_state.keys():
+        logger.info(f"Preconfig alredy sent")
+        return None,None,hook_state
 
-    '''
+    '''Preconfig is given to all ACS devices that have a physical device. Regardless of IP address validation.'''
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    related_device = acs_device.get_related_device()
 
+    if acs_device.get_related_device():
+        logger.info(f"{acs_session}: Applying preconfig to {acs_device} as it is related with {acs_device.get_related_device()}")
+    else:
+        logger.info(f"{acs_session}: Not applying preconfig to {acs_device} as it is not in our inventory.")
+
+    # Model preconfig list
+    # Format is list of tuple ('factory_default_only','active_tracked','paramter_name','type','static_value','acs_config_key')
+    # If acs_config_key exists, it takes preference. The datatype in inferred.
+
+    model_preconfig_dict = {
+        'InternetGatewayDevice.ManagementServer.PeriodicInformInterval': ('unsignedInt','180',None),
+        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID': ('string',None,'django_acs.wifi.bg_ssid'),
+        'Fantasy.43.Hejsa': ('string',None,'nixi-bixi')
+    }
+    
+    if related_device:
+        device_preconfig_dict = related_device.get_acs_config()
+    else:
+        device_preconfig_dict = {}
+    cwmp_obj = etree.Element(nse('cwmp', 'SetParameterValues'))
+    paramlist = etree.SubElement(cwmp_obj, 'ParameterList')
+
+    for parameter_name,(paramter_type,static_value,dynamic_value_key) in model_preconfig_dict.items():
+        if dynamic_value_key != None:
+            if dynamic_value_key in device_preconfig_dict.keys():
+                _add_pvs_type(paramlist,parameter_name,paramter_type,device_preconfig_dict[dynamic_value_key])
+            elif static_value != None:
+                _add_pvs_type(paramlist,parameter_name,paramter_type,static_value)
+            else:
+                continue
+        else:
+            if static_value != None:
+                _add_pvs_type(paramlist,parameter_name,paramter_type,static_value)
+
+    paramlist.set(nse('soap-enc', 'arrayType'), "cwmp:ParameterValueStruct[%s]" % len(paramlist))
+
+    response_cwmp_id = uuid.uuid4().hex
+    root, body = get_soap_envelope(response_cwmp_id,acs_session)
+    body.append(cwmp_obj)
+
+    paramkey = etree.SubElement(cwmp_obj, 'ParameterKey')
+    paramkey.text = "2022-10-14 16:46:48.473230"
+
+    hook_state['preconfig_sent'] = str(timezone.datetime.now())
+    return root,body,hook_state
+
+
+
+def _add_pvs_type(element,key,value_type,value):
+    struct = etree.SubElement(element, "ParameterValueStruct")
+    nameobj = etree.SubElement(struct, "Name")
+    nameobj.text = key
+    valueobj = etree.SubElement(struct, 'Value')
+
+    if value_type == "boolean":
+        valueobj.set(nse('xsi', 'type'), "xsd:boolean")
+        valueobj.text = str(value).lower()
+    elif value_type == "unsignedInt":
+        valueobj.set(nse('xsi', 'type'), "xsd:unsignedInt")
+        valueobj.text = str(int(value))
+    elif value_type == "string":
+        valueobj.set(nse('xsi', 'type'), "xsd:string")
+        valueobj.text = str(value)
+
+    return element
+
+#def add_pvs(element, key, value):
+#    '''
+#    Given an etree Element, a key, and a value;
+#    add_pvs() will add a cwmp:ParameterValueStruct (without the namespace)
+#    containing a Name and a Value element. Only supports int bool and str/unicode for now.
+#    '''
+#    struct = etree.SubElement(element, 'ParameterValueStruct')
+#    nameobj = etree.SubElement(struct, 'Name')
+#    nameobj.text = key
+#    valueobj = etree.SubElement(struct, 'Value')
+#
+#    if isinstance(value, bool):
+#        valueobj.set(nse('xsi', 'type'), "xsd:boolean")
+#        valueobj.text = "true" if value else "false"
+#    elif isinstance(value, int):
+#        valueobj.set(nse('xsi', 'type'), "xsd:unsignedInt")
+#        valueobj.text = str(value)
+#    elif isinstance(value, str) or isinstance(value, str):
+#        valueobj.set(nse('xsi', 'type'), "xsd:string")
+#        valueobj.text = value
 
 def _device_firmware_upgrade(acs_http_request,hook_state):
     acs_session = acs_http_request.acs_session
@@ -205,6 +296,13 @@ def _device_firmware_upgrade(acs_http_request,hook_state):
 
 def _verify_client_ip(acs_http_request,hook_state):
     acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    related_device = acs_device.get_related_device()
+
+    if not related_device:
+        logger.info(f"{acs_session}: Skip verify client IP, as there is not related device for {acs_device}.")
+        return None,None,hook_state
+
     if 'client_ip_verified' in hook_state.keys():
         # If the client IP is already verified do nothing.
         return None,None,hook_state
@@ -261,10 +359,8 @@ def _process_inform(acs_http_request,hook_state):
     # If we make to here, we process the inform.
     # A session has to begin with an inform, so if we get anything else we throw an error.
 
-
-    ### get Inform xml element
+    # get Inform xml element
     inform = acs_http_request.soap_body.find('cwmp:Inform', acs_session.soap_namespaces)
-
 
     ### determine which data model version this device is using
     datamodel, created = CwmpDataModel.objects.get_or_create(
@@ -272,6 +368,9 @@ def _process_inform(acs_http_request,hook_state):
     )
     logger.info(f"{acs_session}: ACS client is using data model %s" % datamodel)
     acs_session.root_data_model = datamodel
+    root_object = acs_session.root_data_model.root_object
+
+    logger.info(f"ROOT OBJECT: {root_object}")
 
     deviceid = inform.find('DeviceId')
     mandatory_inform_fields = ['SerialNumber','Manufacturer','ProductClass','OUI']
@@ -313,6 +412,26 @@ def _process_inform(acs_http_request,hook_state):
     ### set latest session result to False and increase inform count
     acs_device.acs_latest_session_result = False
     acs_device.acs_inform_count = F('acs_inform_count') + 1
+
+    # Update acs_device data
+    # get parameterlist from the Inform payload
+    parameterlist = inform.find('ParameterList')
+
+    ### update current_config_level from Device.ManagementServer.ParameterKey
+    parameterkey = get_value_from_parameterlist(parameterlist, f"{root_object}.ManagementServer.ParameterKey")
+    if not parameterkey:
+        acs_device.current_config_level = None
+    else:
+        acs_device.current_config_level = parse_datetime(parameterkey)
+
+    ### update latest_inform time
+    acs_device.acs_latest_inform = timezone.now()
+
+    ### update current_software_version
+    acs_device.current_software_version = get_value_from_parameterlist(parameterlist, f"{root_object}.DeviceInfo.SoftwareVersion")
+
+    logger.info(get_value_from_parameterlist(parameterlist, f"{root_object}.DeviceInfo.SoftwareVersion"))
+
     acs_device.save()
 
     # save acs_device to acs_session
@@ -332,6 +451,9 @@ def _process_inform(acs_http_request,hook_state):
     if not acs_session.get_inform_eventcodes(inform, acs_http_request):
         # the event section is missing from this Inform
         return HttpResponseBadRequest(),hook_state
+
+
+    # Process inform ParamterList 
 
     # Inform processed OK, prepare a response
     root, body = get_soap_envelope(acs_http_request.cwmp_id, acs_session)
