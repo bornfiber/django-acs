@@ -18,6 +18,7 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
+from .hooks import _process_inform, _preconfig, _device_config
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
@@ -89,6 +90,7 @@ class AcsServerView2(View):
         hook_list = [
             (_process_inform,"_process_inform"),
             (_preconfig,"_preconfig"),
+            (_device_config,"_device_config"),
             (_verify_client_ip,"_verify_client_ip"),
             (_device_firmware_upgrade,"_device_firmware_upgrade"),
         ]
@@ -142,106 +144,6 @@ class AcsServerView2(View):
         return response
 
 
-### AcsServerView2 helper functions ###
-
-def _preconfig(acs_http_request,hook_state):
-
-    if "preconfig_sent" in hook_state.keys():
-        logger.info(f"Preconfig alredy sent")
-        return None,None,hook_state
-
-    '''Preconfig is given to all ACS devices that have a physical device. Regardless of IP address validation.'''
-    acs_session = acs_http_request.acs_session
-    acs_device = acs_session.acs_device
-    related_device = acs_device.get_related_device()
-
-    if acs_device.get_related_device():
-        logger.info(f"{acs_session}: Applying preconfig to {acs_device} as it is related with {acs_device.get_related_device()}")
-    else:
-        logger.info(f"{acs_session}: Not applying preconfig to {acs_device} as it is not in our inventory.")
-
-    # Model preconfig list
-    # Format is list of tuple ('factory_default_only','active_tracked','paramter_name','type','static_value','acs_config_key')
-    # If acs_config_key exists, it takes preference. The datatype in inferred.
-
-    model_preconfig_dict = {
-        'InternetGatewayDevice.ManagementServer.PeriodicInformInterval': ('unsignedInt','180',None),
-        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID': ('string',None,'django_acs.wifi.bg_ssid'),
-        'Fantasy.43.Hejsa': ('string',None,'nixi-bixi')
-    }
-    
-    if related_device:
-        device_preconfig_dict = related_device.get_acs_config()
-    else:
-        device_preconfig_dict = {}
-    cwmp_obj = etree.Element(nse('cwmp', 'SetParameterValues'))
-    paramlist = etree.SubElement(cwmp_obj, 'ParameterList')
-
-    for parameter_name,(paramter_type,static_value,dynamic_value_key) in model_preconfig_dict.items():
-        if dynamic_value_key != None:
-            if dynamic_value_key in device_preconfig_dict.keys():
-                _add_pvs_type(paramlist,parameter_name,paramter_type,device_preconfig_dict[dynamic_value_key])
-            elif static_value != None:
-                _add_pvs_type(paramlist,parameter_name,paramter_type,static_value)
-            else:
-                continue
-        else:
-            if static_value != None:
-                _add_pvs_type(paramlist,parameter_name,paramter_type,static_value)
-
-    paramlist.set(nse('soap-enc', 'arrayType'), "cwmp:ParameterValueStruct[%s]" % len(paramlist))
-
-    response_cwmp_id = uuid.uuid4().hex
-    root, body = get_soap_envelope(response_cwmp_id,acs_session)
-    body.append(cwmp_obj)
-
-    paramkey = etree.SubElement(cwmp_obj, 'ParameterKey')
-    paramkey.text = "2022-10-14 16:46:48.473230"
-
-    hook_state['preconfig_sent'] = str(timezone.datetime.now())
-    return root,body,hook_state
-
-
-
-def _add_pvs_type(element,key,value_type,value):
-    struct = etree.SubElement(element, "ParameterValueStruct")
-    nameobj = etree.SubElement(struct, "Name")
-    nameobj.text = key
-    valueobj = etree.SubElement(struct, 'Value')
-
-    if value_type == "boolean":
-        valueobj.set(nse('xsi', 'type'), "xsd:boolean")
-        valueobj.text = str(value).lower()
-    elif value_type == "unsignedInt":
-        valueobj.set(nse('xsi', 'type'), "xsd:unsignedInt")
-        valueobj.text = str(int(value))
-    elif value_type == "string":
-        valueobj.set(nse('xsi', 'type'), "xsd:string")
-        valueobj.text = str(value)
-
-    return element
-
-#def add_pvs(element, key, value):
-#    '''
-#    Given an etree Element, a key, and a value;
-#    add_pvs() will add a cwmp:ParameterValueStruct (without the namespace)
-#    containing a Name and a Value element. Only supports int bool and str/unicode for now.
-#    '''
-#    struct = etree.SubElement(element, 'ParameterValueStruct')
-#    nameobj = etree.SubElement(struct, 'Name')
-#    nameobj.text = key
-#    valueobj = etree.SubElement(struct, 'Value')
-#
-#    if isinstance(value, bool):
-#        valueobj.set(nse('xsi', 'type'), "xsd:boolean")
-#        valueobj.text = "true" if value else "false"
-#    elif isinstance(value, int):
-#        valueobj.set(nse('xsi', 'type'), "xsd:unsignedInt")
-#        valueobj.text = str(value)
-#    elif isinstance(value, str) or isinstance(value, str):
-#        valueobj.set(nse('xsi', 'type'), "xsd:string")
-#        valueobj.text = value
-
 def _device_firmware_upgrade(acs_http_request,hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
@@ -273,7 +175,7 @@ def _device_firmware_upgrade(acs_http_request,hook_state):
 
             return None,None,hook_state
 
-    if acs_device.current_software_version != acs_device.get_desired_software_version():
+    if acs_device.get_desired_software_version() and acs_device.current_software_version != acs_device.get_desired_software_version():
         # If we need a different software we upgrade the device.
         logger.info(f"{acs_session}: Updating firmware on {acs_device}, {acs_device.current_software_version} -> {acs_device.get_desired_software_version()}")
         response_cwmp_id = uuid.uuid4().hex
@@ -314,156 +216,6 @@ def _verify_client_ip(acs_http_request,hook_state):
 
     hook_state["client_ip_verified"] = str(timezone.datetime.now())
     return None,None,hook_state
-
-
-def _process_inform(acs_http_request,hook_state):
-    acs_session = acs_http_request.acs_session
-    acs_device = acs_session.acs_device
-
-    # Check the hook_state
-    if acs_http_request.cwmp_rpc_method == 'Inform' and 'inform_received' in hook_state.keys():
-        # If we receive a second Inform in the same session, signal this as an error.
-        logger.info(f"{acs_session}: We have received an inform already in this sesson")
-        hook_state['inform_multiple_error'] = str(timezone.datetime.now())
-        return False,None,hook_state
-
-    elif 'inform_done' in hook_state.keys():
-        # The inform is done.
-        # Do nothing.
-        return None,None,hook_state
-
-    elif 'inform_received' in hook_state.keys() and acs_http_request.soap_body is False:
-        # This is the empty post that indicates that the inform phase is done.
-        # Do nothing, and mark the inform as done.
-        hook_state['inform_done'] = str(timezone.datetime.now())
-        return None,None,hook_state
-
-    elif acs_http_request.cwmp_rpc_method == 'TransferComplete':
-        logger.info(f"{acs_session}: {acs_device} sent a TransferComplete message.")
-
-        # Inform processed OK, prepare a response
-        root, body = get_soap_envelope(acs_http_request.cwmp_id, acs_session)
-        cwmp = etree.SubElement(body, nse('cwmp', 'TransferCompleteResponse'))
-        ### add the inner response elements, without namespace (according to cwmp spec!)
-        maxenv = etree.SubElement(cwmp, 'MaxEnvelopes')
-        maxenv.text = '1'
-        hook_state['transfer_complete'] = str(timezone.datetime.now())
-        return root,body,hook_state
-
-    elif acs_http_request.cwmp_rpc_method != 'Inform':
-        # If we receive anything that is not an inform, throw an error.
-        logger.info(f"{acs_session}: The session must begin with an inform. Request {acs_http_request} is not an inform.")
-        return False,None,hook_state
-
-
-    # If we make to here, we process the inform.
-    # A session has to begin with an inform, so if we get anything else we throw an error.
-
-    # get Inform xml element
-    inform = acs_http_request.soap_body.find('cwmp:Inform', acs_session.soap_namespaces)
-
-    ### determine which data model version this device is using
-    datamodel, created = CwmpDataModel.objects.get_or_create(
-        name=acs_http_request.acs_session.determine_data_model(inform)
-    )
-    logger.info(f"{acs_session}: ACS client is using data model %s" % datamodel)
-    acs_session.root_data_model = datamodel
-    root_object = acs_session.root_data_model.root_object
-
-    logger.info(f"ROOT OBJECT: {root_object}")
-
-    deviceid = inform.find('DeviceId')
-    mandatory_inform_fields = ['SerialNumber','Manufacturer','ProductClass','OUI']
-    for inform_field in mandatory_inform_fields:
-        field_value = deviceid.find(inform_field)
-        if field_value is None or field_value == "":
-            message = f"{acs_session}: Invalid Inform, {inform_field} missing from request."
-            logger.info(message)
-            return False,None,hook_state
-
-    #########################################################################
-    ### get deviceid element from Inform request
-
-
-    ### find or create acs devicevendor (using Manufacturer and OUI)
-    acs_devicevendor, created = AcsDeviceVendor.objects.get_or_create(
-        name__iexact = deviceid.find("Manufacturer").text,
-        oui = deviceid.find("OUI").text,
-        defaults = {
-            "name": deviceid.find("Manufacturer").text,
-        }
-    )
-
-    ### find or create acs devicetype (using ProductClass)
-    acs_devicemodel, created = AcsDeviceModel.objects.get_or_create(
-        vendor = acs_devicevendor,
-        name__iexact = deviceid.find("ProductClass").text,
-        defaults = {
-            "name": deviceid.find("ProductClass").text,
-        }
-    )
-
-    ### find or create acs device (using serial number and acs devicetype)
-    acs_device, created = AcsDevice.objects.get_or_create(
-        model = acs_devicemodel,
-        serial = deviceid.find("SerialNumber").text
-    )
-
-    ### set latest session result to False and increase inform count
-    acs_device.acs_latest_session_result = False
-    acs_device.acs_inform_count = F('acs_inform_count') + 1
-
-    # Update acs_device data
-    # get parameterlist from the Inform payload
-    parameterlist = inform.find('ParameterList')
-
-    ### update current_config_level from Device.ManagementServer.ParameterKey
-    parameterkey = get_value_from_parameterlist(parameterlist, f"{root_object}.ManagementServer.ParameterKey")
-    if not parameterkey:
-        acs_device.current_config_level = None
-    else:
-        acs_device.current_config_level = parse_datetime(parameterkey)
-
-    ### update latest_inform time
-    acs_device.acs_latest_inform = timezone.now()
-
-    ### update current_software_version
-    acs_device.current_software_version = get_value_from_parameterlist(parameterlist, f"{root_object}.DeviceInfo.SoftwareVersion")
-
-    logger.info(get_value_from_parameterlist(parameterlist, f"{root_object}.DeviceInfo.SoftwareVersion"))
-
-    acs_device.save()
-
-    # save acs_device to acs_session
-    acs_session.acs_device = acs_device
-    acs_session.save()
-
-    # attempt acs device association
-    if not acs_device.get_related_device():
-        acs_device.associate_with_related_device()
-
-    if not acs_device.acs_xmpp_password:
-        acs_device.create_xmpp_user()
-
-    if not acs_device.acs_connectionrequest_password:
-        acs_device.create_connreq_password()
-
-    if not acs_session.get_inform_eventcodes(inform, acs_http_request):
-        # the event section is missing from this Inform
-        return HttpResponseBadRequest(),hook_state
-
-
-    # Process inform ParamterList 
-
-    # Inform processed OK, prepare a response
-    root, body = get_soap_envelope(acs_http_request.cwmp_id, acs_session)
-    cwmp = etree.SubElement(body, nse('cwmp', 'InformResponse'))
-    ### add the inner response elements, without namespace (according to cwmp spec!)
-    maxenv = etree.SubElement(cwmp, 'MaxEnvelopes')
-    maxenv.text = '1'
-
-    hook_state['inform_received'] = str(timezone.datetime.now())
-    return root,body,hook_state
 
 
 ################################################################################################################################
