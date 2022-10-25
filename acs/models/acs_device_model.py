@@ -13,6 +13,9 @@ class AcsDeviceModel(AcsBaseModel):
     desired_software_version = models.CharField(max_length=50, blank=True)
     acs_parameter_map_overrides = JSONField(null=True, blank=True)
     acs_connectionrequest_digest_auth = models.BooleanField(default=False)
+    preconfig_template = models.TextField(blank=True, default="")
+    config_template = models.TextField(blank=True, default="")
+    tracked_parameters = models.TextField(blank=True, default="")
 
     def __str__(self):
         return str("%s - %s" % (self.tag, self.name))
@@ -37,4 +40,5 @@ class AcsDeviceModel(AcsBaseModel):
             #This acs device category needs notifications for the whole Wifi tree
             parameterlist.append("%s.Wifi." % root_object)
         return parameterlist
+
 

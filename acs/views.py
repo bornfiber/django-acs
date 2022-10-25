@@ -18,7 +18,7 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
-from .hooks import _process_inform, _preconfig, _device_config
+from .hooks import _process_inform, _preconfig, _device_config, track_parameters
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
