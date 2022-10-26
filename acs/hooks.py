@@ -7,6 +7,7 @@ from defusedxml.lxml import fromstring
 # Dajngo deps
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+from django.conf import settings
 
 # Django model deps
 from django.db.models import F
@@ -17,51 +18,6 @@ from .response import nse, get_soap_envelope
 from .conf import acs_settings
 
 logger = logging.getLogger("django_acs.%s" % __name__)
-
-
-mock_data = """
-# Baseconfig
-InternetGatewayDevice.ManagementServer.PeriodicInformInterval | unsignedInt | django_acs.acs.informinterval | 180
-
-# Xmpp
-InternetGatewayDevice.XMPP.Connection.1.Domain | string | django_acs.acs.xmpp_connection_domain
-InternetGatewayDevice.XMPP.Connection.1.Enable | boolean | django_acs.acs.xmpp_connection_enable
-InternetGatewayDevice.XMPP.Connection.1.Password | string | django_acs.acs.xmpp_connection_password
-InternetGatewayDevice.XMPP.Connection.1.Username | string | django_acs.acs.xmpp_connection_username
-InternetGatewayDevice.XMPP.Connection.1.UseTLS | boolean | django_acs.acs.xmpp_connection_usetls
-InternetGatewayDevice.XMPP.Connection.1.Resource | string | django_acs.acs.xmpp_server
-InternetGatewayDevice.XMPP.Connection.1.X_ALU_COM_XMPP_Port | int |django_acs.acs.xmpp_server_port
-
-# Management vlan
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_D0542D_ServiceList | string | django_acs.management.ip.servicelist
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_ALU-COM_WanAccessCfg.HttpsDisabled | boolean | django_acs.management.ip.https_disabled
-
-# Internet vlan
-#InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANEthernetLinkConfig.X_ALU-COM_VLANIDMark | int | django_acs.internet.vlan.id
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANEthernetLinkConfig.X_ALU-COM_VLANIDMark | int | none | 2000
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANEthernetLinkConfig.X_ALU-COM_Mode | unsignedInt | django_acs.internet.vlan.mode
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_ALU-COM_IPMode | unsignedInt | none | 3
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Enable | boolean | none | true
-
-# Internet IP interface
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.ConnectionType | string | django_acs.internet.ip.type
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.Enable | boolean | django_acs.internet.ip.enable
-InternetGatewayDevice.WANDevice.1.WANConnectionDevice.2.WANIPConnection.1.X_D0542D_ServiceList | string | django_acs.internet.ip.servicelist
-
-# 2.4GHz WIFI
-
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Enable | boolean | django_acs.wifi.n_enable
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.Channel | unsignedInt | django_acs.wifi.bg_channel
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID | string | django_acs.wifi.bg_ssid
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase | string | django_acs.wifi.n_wpapsk
-
-# 5 Ghz WIFI
-
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Enable | boolean | django_acs.wifi.bg_enable
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.Channel | unsignedInt | django_acs.wifi.n_channel
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.SSID | string | django_acs.wifi.n_ssid
-InternetGatewayDevice.LANDevice.1.WLANConfiguration.5.PreSharedKey.1.KeyPassphrase | string | django_acs.wifi.bg_wpapsk
-"""
 
 
 def _process_inform(acs_http_request, hook_state):
@@ -227,15 +183,46 @@ def _process_inform(acs_http_request, hook_state):
 
 
 def track_parameters(acs_http_request, hook_state):
-    acs_session = acs_http_requequest.acs_session
+    acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
     if "hook_done" in hook_state.keys():
         logger.info(f"{acs_session.tag}/{acs_device}: track_paramters is done")
         return None,None,hook_state
-        tracked_parameters = load_tracked_parameters(acs_device)
 
-    return None,None,hook_state
+    # If we get a GetParamterValuesResponse with our cwmp_id, we process it.
+    if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse" and acs_http_request.cwmp_id == hook_state["pending_cwmp_id"]:
+        logger.info(f"{acs_session.pk}/{acs_device}: Processing track_parameters GetParameterValuesResponse.")
+
+        # Save the Parametervalues
+        root = etree.Element("DjangoAcsParameterCache")
+        paramcount = 0
+        for param in acs_http_request.soap_body.find('cwmp:GetParameterValuesResponse', acs_session.soap_namespaces).find('ParameterList').getchildren():
+            paramcount += 1
+
+            # Add empty writeable element.
+            writable = etree.Element("Writable")
+            writable.text = ""
+            param.append(writable)
+
+            root.append(param)
+
+        logger.info(f"{acs_session.tag}/{acs_device}: Processed {paramcount} paramters.")
+        ### alright, update the ACS device with the new information.
+        acs_device.acs_parameters = etree.tostring(root, xml_declaration=True).decode('utf-8','ignore')
+        acs_device.acs_parameters_time = timezone.now()
+
+
+        hook_state["hook_done"] = True
+        return None,None,hook_state
+
+
+    if not "tracked_parameters" in hook_state.keys():
+        tracked_parameters = load_tracked_parameters(acs_device)
+        cwmp_id = uuid.uuid4().hex
+        hook_state["pending_cwmp_id"] = cwmp_id
+        root,body = _cwmp_GetPrameterValues_soap(tracked_parameters, cwmp_id, acs_session)
+        return root,body,hook_state
 
 
 def _device_config(acs_http_request, hook_state):
@@ -249,16 +236,16 @@ def _device_config(acs_http_request, hook_state):
         print(f"_device_config alredy done")
         return None, None, hook_state
 
-    if "no_phy_device" in hook_state.keys():
-        print(f"_device_config has no phy_device.")
+    if "no_related_device" in hook_state.keys():
+        print(f"_device_config has no related_device.")
         return None, None, hook_state
 
     # Get the real associated device if any.
-    phy_device = acs_device.get_related_device()
+    related_device = acs_device.get_related_device()
 
-    if not phy_device:
-        hook_state["no_phy_device"] = True
-        logger.info(f"{acs_session.tag}: {acs_device} has no related phy_device.")
+    if not related_device:
+        hook_state["no_related_device"] = True
+        logger.info(f"{acs_session.tag}: {acs_device} has no related related_device.")
         return None, None, hook_state
 
     # Process incoming GetParameterNamesResponse
@@ -305,20 +292,38 @@ def _device_config(acs_http_request, hook_state):
 
         return root, body, hook_state
 
-    # Test if we need to call Addobject
-    # addobject_list = get_addobject_list(config_dict,parameternames_dict)
+    # Build the device_config dict
+    device_config = related_device.get_acs_config()
+
+    # Add InformInterval
+    device_config['django_acs.acs.informinterval'] = acs_settings.INFORM_INTERVAL
+
+    # add acs client xmpp settings (only if we have an xmpp account for this device)
+    if acs_device.acs_xmpp_password:
+        device_config['django_acs.acs.xmpp_server'] = settings.ACS_XMPP_SERVERTUPLE[0]
+        device_config['django_acs.acs.xmpp_server_port'] = settings.ACS_XMPP_SERVERTUPLE[1]
+        device_config['django_acs.acs.xmpp_connection_enable'] = True
+        device_config['django_acs.acs.xmpp_connection_username'] = acs_device.acs_xmpp_username
+        device_config['django_acs.acs.xmpp_connection_password'] = acs_device.acs_xmpp_password
+        device_config['django_acs.acs.xmpp_connection_domain'] = settings.ACS_XMPP_DOMAIN # all ACS clients connect to the same XMPP server domain for now
+        device_config['django_acs.acs.xmpp_connection_usetls'] = False
+
+    # set connectionrequest credentials?
+    if acs_device.acs_connectionrequest_username:
+        device_config['django_acs.acs.connection_request_user'] = acs_device.acs_connectionrequest_username
+        device_config['django_acs.acs.connection_request_password'] = acs_device.acs_connectionrequest_password
+
 
     # Generate the config
-    template_dict = _parse_config_template(mock_data)
-    config_dict = _merge_config_template(template_dict, phy_device.get_acs_config())
-
-    get_list = _shorten_keylist(config_dict)
+    template_dict = _parse_config_template(acs_device.model.config_template,acs_session.inform_eventcodes)
+    config_dict = _merge_config_template(template_dict,device_config)
 
     # Test if we need to call Addobject
     addobject_list = get_addobject_list(
         config_dict, hook_state["discovered_param_names"]
     )
 
+    # If we have objects that need to be added, do so now.
     if addobject_list:
         logger.info(f"{acs_session}: Adding object {addobject_list[0][0]}")
         response_cwmp_id = uuid.uuid4().hex
@@ -327,62 +332,17 @@ def _device_config(acs_http_request, hook_state):
             "key": addobject_list[0][0],
             "wanted_index": addobject_list[0][1],
         }
+
+        # Add the first object in the addobject_list
         root, body = _cwmp_AddObject_soap(
             addobject_list[0][0], "hejsa", response_cwmp_id, acs_session
         )
         return root, body, hook_state
 
-    # Get the current config, in order to diff it against desired state. And test if we need to
-    # do some Addobject calls first.
-    # if not "get_list" in hook_state.keys():
-    #    hook_state['get_list'] = get_list
-    #    hook_state['discovered_param_names'] = {}
 
-    #    if hook_state['get_list']:
-    #        print("#########################")
-    #        print("\n".join(hook_state["get_list"]))
-    #        print("#########################")
-    #        key = hook_state["get_list"].pop()
-    #        response_cwmp_id = uuid.uuid4().hex
-    #        hook_state["pending_cwmp_id"] = response_cwmp_id
-    #        root,body = _cwmp_GetParameterNames_soap(key,response_cwmp_id,acs_session)
-    #        return root,body,hook_state
-
-    #    if not 'get_sent' in hook_state.keys():
-    #        response_cwmp_id = uuid.uuid4().hex
-    #        root,body = _cwmp_GetPrameterValues_soap(get_list,response_cwmp_id,acs_session)
-    #        hook_state['get_sent'] = True
-    #        print("###########################")
-    #        print(etree.tostring(root,pretty_print=True).decode('utf8'))
-    #        print("###########################")
-    #        return root,body,hook_state
-
-    # Get the current state
-    # Add if something is missing
-    # Set the config
-    # States
-    # get_sent
-    # get_done
-
-    device_tracked_dict = {
-        "InternetGatewayDevice.ManagementServer.": True,
-        "InternetGatewayDevice.LANDevice.1.WLANConfiguration.2.": True,
-    }
-    device_config_dict = {
-        "InternetGatewayDevice.ManagementServer.PeriodicInformInterval": (
-            "unsignedInt",
-            "180",
-            None,
-        ),
-    }
-
-    # Create a list of unique non overlapping get paramters
-    raw_get_list = list(device_tracked_dict.keys()) + list(device_config_dict.keys())
-    raw_get_list = get_list
-
+    # Set the parameters 
     cwmp_id = uuid.uuid4().hex
-    parameter_key = "Hejsa"
-    # root,body = _cwmp_GetPrameterValues_soap(raw_get_list,parameter_key,cwmp_id,acs_session)
+    parameter_key = str(acs_device.desired_config_level)
     root, body = _cwmp_SetParameterNames_soap(
         config_dict, parameter_key, cwmp_id, acs_session
     )
@@ -392,17 +352,15 @@ def _device_config(acs_http_request, hook_state):
 
 
 def _preconfig(acs_http_request, hook_state):
-
-    if "preconfig_sent" in hook_state.keys():
-        # logger.info(f"Preconfig alredy sent")
-        return None, None, hook_state
-
-    """Preconfig is given to all ACS devices that have a physical device. Regardless of IP address validation."""
+    # Preconfig is given to all ACS devices that have a physical device. Regardless of IP address validation.
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
     related_device = acs_device.get_related_device()
 
-    if acs_device.get_related_device():
+    if "hook_done" in hook_state.keys():
+        return None, None, hook_state
+
+    if related_device:
         logger.info(
             f"{acs_session}: Applying preconfig to {acs_device} as it is related with {acs_device.get_related_device()}"
         )
@@ -410,67 +368,49 @@ def _preconfig(acs_http_request, hook_state):
         logger.info(
             f"{acs_session}: Not applying preconfig to {acs_device} as it is not in our inventory."
         )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
 
-    # Model preconfig list
-    # Format is list of tuple ('factory_default_only','active_tracked','paramter_name','type','static_value','acs_config_key')
-    # If acs_config_key exists, it takes preference. The datatype in inferred.
-
-    model_preconfig_dict = {
-        #         'Device.ManagementServer.PeriodicInformInterval': ('unsignedInt','180',None),
-        "InternetGatewayDevice.ManagementServer.PeriodicInformInterval": (
-            "unsignedInt",
-            "180",
-            None,
-        ),
-        "InternetGatewayDevice.ManagementServer.AutoCreateInstances": (
-            "boolean",
-            False,
-            None,
-        ),
-        #        'InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID': ('string',None,'django_acs.wifi.bg_ssid'),
-        #        'Fantasy.43.Hejsa': ('string',None,'nixi-bixi')
-    }
+    # Generate the config
+    template_dict = _parse_config_template(acs_device.model.preconfig_template,acs_session.inform_eventcodes)
 
     if related_device:
-        device_preconfig_dict = related_device.get_acs_config()
+        device_config = related_device.get_acs_config()
     else:
-        device_preconfig_dict = {}
-    cwmp_obj = etree.Element(nse("cwmp", "SetParameterValues"))
-    paramlist = etree.SubElement(cwmp_obj, "ParameterList")
+        device_config = {}
 
-    for parameter_name, (
-        paramter_type,
-        static_value,
-        dynamic_value_key,
-    ) in model_preconfig_dict.items():
-        if dynamic_value_key != None:
-            if dynamic_value_key in device_preconfig_dict.keys():
-                _add_pvs_type(
-                    paramlist,
-                    parameter_name,
-                    paramter_type,
-                    device_preconfig_dict[dynamic_value_key],
-                )
-            elif static_value != None:
-                _add_pvs_type(paramlist, parameter_name, paramter_type, static_value)
-            else:
-                continue
-        else:
-            if static_value != None:
-                _add_pvs_type(paramlist, parameter_name, paramter_type, static_value)
+    # Add InformInterval
+    device_config['django_acs.acs.informinterval'] = acs_settings.INFORM_INTERVAL
 
-    paramlist.set(
-        nse("soap-enc", "arrayType"), "cwmp:ParameterValueStruct[%s]" % len(paramlist)
+    # add acs client xmpp settings (only if we have an xmpp account for this device)
+    if acs_device.acs_xmpp_password:
+        device_config['django_acs.acs.xmpp_server'] = settings.ACS_XMPP_SERVERTUPLE[0]
+        device_config['django_acs.acs.xmpp_server_port'] = settings.ACS_XMPP_SERVERTUPLE[1]
+        device_config['django_acs.acs.xmpp_connection_enable'] = True
+        device_config['django_acs.acs.xmpp_connection_username'] = acs_device.acs_xmpp_username
+        device_config['django_acs.acs.xmpp_connection_password'] = acs_device.acs_xmpp_password
+        device_config['django_acs.acs.xmpp_connection_domain'] = settings.ACS_XMPP_DOMAIN # all ACS clients connect to the same XMPP server domain for now
+        device_config['django_acs.acs.xmpp_connection_usetls'] = False
+
+    # set connectionrequest credentials?
+    if acs_device.acs_connectionrequest_username:
+        device_config['django_acs.acs.connection_request_user'] = acs_device.acs_connectionrequest_username
+        device_config['django_acs.acs.connection_request_password'] = acs_device.acs_connectionrequest_password
+
+    ### END ###
+
+    # Generate the config
+    template_dict = _parse_config_template(acs_device.model.preconfig_template,acs_session.inform_eventcodes)
+    config_dict = _merge_config_template(template_dict,device_config)
+
+    # Set the parameters 
+    cwmp_id = uuid.uuid4().hex
+    parameter_key = str(acs_device.current_config_level)
+    root, body = _cwmp_SetParameterNames_soap(
+        config_dict, parameter_key, cwmp_id, acs_session
     )
 
-    response_cwmp_id = uuid.uuid4().hex
-    root, body = get_soap_envelope(response_cwmp_id, acs_session)
-    body.append(cwmp_obj)
-
-    paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
-    paramkey.text = "2022-10-14 16:46:48.473230"
-
-    hook_state["preconfig_sent"] = str(timezone.now())
+    hook_state["hook_done"] = str(timezone.now())
     return root, body, hook_state
 
 
@@ -545,7 +485,7 @@ def _cwmp_AddObject_soap(key, ParameterKey, cwmp_id, acs_session):
     return root, body
 
 
-def _cwmp_GetPrameterValues_soap(key_list, ParameterKey, cwmp_id, acs_session):
+def _cwmp_GetPrameterValues_soap(key_list, cwmp_id, acs_session):
     # Create a list of unique paramters we want to get info for.
     get_list = []
     for new_key in sorted(key_list, key=len):
@@ -567,8 +507,6 @@ def _cwmp_GetPrameterValues_soap(key_list, ParameterKey, cwmp_id, acs_session):
     paramlist.set(nse("soap-enc", "arrayType"), "xsd:string[%s]" % len(paramlist))
     root, body = get_soap_envelope(cwmp_id, acs_session)
     body.append(cwmp_obj)
-    paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
-    paramkey.text = ParameterKey
 
     return root, body
 
@@ -579,8 +517,13 @@ def _cwmp_FactoryReset_soap(acs_session):
 
     return root,body
 
-def _parse_config_template(template):
+def _parse_config_template(template,inform_eventcodes=[]):
     parsed_data = {}
+
+    bootstrap = False
+    if "0 BOOTSTRAP" in inform_eventcodes:
+        bootstrap = True
+
 
     for line in template.splitlines():
         if line.startswith("#"):
@@ -588,6 +531,10 @@ def _parse_config_template(template):
         if line.isspace():
             continue
         if line == "":
+            continue
+        if line.startswith("!") and bootstrap:
+            line = line[1:]
+        elif line.startswith("!"): 
             continue
         line_fields = [f.strip() for f in line.split("|")]
         if len(line_fields) == 4:
@@ -606,7 +553,7 @@ def _parse_config_template(template):
 
 
 def _merge_config_template(template_dict, config_dict):
-    # Merge the template woth the config from get_acs_config()
+    # Merge the template with the config from get_acs_config()
     # Merging rules
     # 1. If neither default value or configdict has a value, the paramter is dropped.
     # 2. If the configdict has no value the default is used.
@@ -623,12 +570,10 @@ def _merge_config_template(template_dict, config_dict):
     return output_dict
 
 
-def _shorten_keylist(key_list, shorten_by=1):
+def non_overlapping_keylist(key_list):
     out_list = []
-    shortened_list = sorted(
-        [".".join(k.split(".")[: shorten_by * -1]) + "." for k in key_list], key=len
-    )
-    for k in shortened_list:
+
+    for k in sorted(list(key_list),key=len):
         found = False
         for out_key in out_list:
             if k.startswith(out_key):
@@ -690,8 +635,13 @@ def get_addobject_list(config_dict, parameternames_dict):
     return sorted(addobject_set, key=len)
 
 def load_tracked_parameters(acs_device):
-    device_tracked_dict = set()
-    lines = acs_device.models.tracked_parameters.splitlines()
+    device_tracked_set = set()
+    lines = acs_device.model.tracked_parameters.splitlines()
+    for line in lines:
+        if line == "": continue
+        if line.startswith("#"): continue
+        if not line.endswith("."): continue
 
+        device_tracked_set.add(line.strip())
 
-    pass
+    return list(device_tracked_set)

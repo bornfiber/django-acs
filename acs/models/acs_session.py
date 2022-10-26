@@ -686,11 +686,9 @@ class AcsSession(AcsBaseModel):
             paramname = param.xpath("Name")[0].text
             paramcount += 1
 
-            if writabledict:
-                if paramname in writabledict:
-                    writable = etree.Element("Writable")
-                    writable.text = writabledict[paramname]
-                    param.append(writable)
+            writable = etree.Element("Writable")
+            writable.text = writabledict[paramname]
+            param.append(writable)
 
             if attributedict:
                 if paramname in attributedict:

@@ -89,10 +89,11 @@ class AcsServerView2(View):
 
         hook_list = [
             (_process_inform,"_process_inform"),
-            (_preconfig,"_preconfig"),
-            (_device_config,"_device_config"),
-            (_verify_client_ip,"_verify_client_ip"),
             (_device_firmware_upgrade,"_device_firmware_upgrade"),
+            (_preconfig,"_preconfig"),
+#            (_device_config,"_device_config"),
+#            (_verify_client_ip,"_verify_client_ip"),
+            (track_parameters,"track_parameters"),
         ]
 
         ### CALL THE HOOKS
@@ -137,6 +138,8 @@ class AcsServerView2(View):
             cwmp_id=acs_http_request.cwmp_id,
             soap_element = f"EmptyResponse",
         )
+        # Save the acs_device, it might have been changed by a hook.
+        acs_session.acs_device.save()
         # Update the session with result.
         acs_session.session_result = True
         acs_session.save()
