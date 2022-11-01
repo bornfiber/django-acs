@@ -10,6 +10,7 @@ from django.contrib.postgres.fields import DateTimeRangeField
 from django.utils import timezone
 from django.conf import settings
 from django.db import models
+from django.contrib.postgres.fields import JSONField
 
 from acs.models import AcsHttpResponse, AcsQueueJob
 from acs.utils import *
@@ -37,7 +38,7 @@ class AcsSession(AcsBaseModel):
     inform_eventcodes = ArrayField(models.TextField(), default=list, blank=True)
     cwmp_namespace = models.CharField(max_length=100, default='', blank=True)
     root_data_model = models.ForeignKey('acs.CwmpDataModel', null=True, blank=True, related_name='acs_sessions', on_delete=models.PROTECT)
-    hook_state = models.TextField(null=True, blank=True)
+    hook_state = JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_date']
@@ -686,9 +687,11 @@ class AcsSession(AcsBaseModel):
             paramname = param.xpath("Name")[0].text
             paramcount += 1
 
-            writable = etree.Element("Writable")
-            writable.text = writabledict[paramname]
-            param.append(writable)
+            if writabledict:
+                if paramname in writabledict:
+                    writable = etree.Element("Writable")
+                    writable.text = writabledict[paramname]
+                    param.append(writable)
 
             if attributedict:
                 if paramname in attributedict:

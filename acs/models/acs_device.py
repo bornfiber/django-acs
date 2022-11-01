@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.apps import apps
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.postgres.fields import JSONField
 
 from acs.response import get_soap_xml_object
 from acs.utils import run_ssh_command, get_value_from_parameterlist
@@ -36,6 +37,8 @@ class AcsDevice(AcsBaseModel):
     acs_parameters_time = models.DateTimeField(null=True, blank=True)
     imported = models.BooleanField(default=False)
     acs_connectionrequest_password = models.CharField(max_length=50, blank=True)
+    firmware_only = models.BooleanField(default=False)
+    hook_state = JSONField(blank=True,null=True)
 
     class Meta:
         # make sure we only ever have one device of a given model with a given serial number

@@ -18,7 +18,7 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
-from .hooks import _process_inform, _preconfig, _device_config, track_parameters
+from .hooks import process_inform, _preconfig, _device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
@@ -37,8 +37,8 @@ class AcsServerView2(View):
         exceeds_ratelimit = _ratelimit_acs_sessions(acs_session)
 
         # Reject the request if it exceeds the ratelimit
-        if exceeds_ratelimit:
-            return HttpResponse(status=420)
+#        if exceeds_ratelimit:
+#            return HttpResponse(status=420)
 
         # Empty posts without a session are discarded at once.
         if not request.body and not acs_session.pk:
@@ -48,6 +48,12 @@ class AcsServerView2(View):
         # If the acs_Session is in memory only, we save it now.
         if not acs_session.pk:
             acs_session.save()
+
+        # Limit each session to 20 acs_http_requests
+        if acs_session.acs_http_requests.count() > 20:
+            message = f"Killing {acs_session.pk}: It has more than 20 acs_http_requests, something looping ??"
+            logger.warning(message)
+            return HttpResponseBadRequest(message)
 
         # Save the acs_http_request, and return the acs_http_request, request_xml and request_headerdict.
         acs_http_request,request_xml,request_headerdict = _save_acs_http_request(acs_session,request)
@@ -85,22 +91,24 @@ class AcsServerView2(View):
         acs_session.save()
 
         # Get the hook state
-        hook_state = json.loads(acs_session.hook_state)
+        hook_state = acs_session.hook_state
 
         hook_list = [
-            (_process_inform,"_process_inform"),
+            (process_inform,"_process_inform"),
+            (configure_xmpp,"configure_xmpp"),
             (_device_firmware_upgrade,"_device_firmware_upgrade"),
-            (_preconfig,"_preconfig"),
-#            (_device_config,"_device_config"),
+#            (_preconfig,"_preconfig"),
 #            (_verify_client_ip,"_verify_client_ip"),
+#            (_device_config,"_device_config"),
             (track_parameters,"track_parameters"),
         ]
 
         ### CALL THE HOOKS
         for (hook_function,hook_state_storage) in hook_list:
+            logger.info(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_storage}")
             response_root,response_body,new_hook_state = hook_function(acs_http_request,hook_state.get(hook_state_storage,{}).copy())
             hook_state[hook_state_storage] = new_hook_state
-            acs_session.hook_state = json.dumps(hook_state)
+            acs_session.hook_state = hook_state
             acs_session.save()
             if response_root == False:
                 # Something is wrong, kill the session.
@@ -150,8 +158,10 @@ class AcsServerView2(View):
 def _device_firmware_upgrade(acs_http_request,hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
+    related_device = acs_device.get_related_device()
 
-    if 'firmware_ok' in hook_state.keys():
+
+    if 'hook_done' in hook_state.keys():
         return None,None,hook_state
 
     if 'download_ok' in hook_state.keys():
@@ -164,16 +174,16 @@ def _device_firmware_upgrade(acs_http_request,hook_state):
         # We have issued a download command, lets check if the response matches the cwmp id.
         if acs_http_request.cwmp_rpc_method == "DownloadResponse":
             logger.info(f"{acs_session}: Checking if DownloadResponse is ok.")
-            cwmp_payload = acs_http_request.soap_body.find('cwmp:%s' % acs_http_request.cwmp_rpc_method, acs_http_request.acs_session.soap_namespaces).find('Status')
-            status_code = cwmp_payload.find("Status")
-            if status_code is None:
+            rpc_response = acs_http_request.soap_body.find('cwmp:%s' % acs_http_request.cwmp_rpc_method, acs_http_request.acs_session.soap_namespaces)
+            status = rpc_response.find("Status")
+            if status is None:
                 logger.info(f"{acs_session}: {acs_device} sent DownloadResponse without status code")
             else:
-                if status_code.text in ['0','1']:
-                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status_code.text} in DownloadResponse.")
+                if status.text in ['0','1']:
+                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse.")
                     hook_state['download_ok'] = str(timezone.datetime.now())
                 else:
-                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status_code.text} in DownloadResponse.")
+                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse.")
                     hook_state['download_failed'] = str(timezone.datetime.now())
 
             return None,None,hook_state
@@ -183,8 +193,10 @@ def _device_firmware_upgrade(acs_http_request,hook_state):
         logger.info(f"{acs_session}: Updating firmware on {acs_device}, {acs_device.current_software_version} -> {acs_device.get_desired_software_version()}")
         response_cwmp_id = uuid.uuid4().hex
         root, body = get_soap_envelope(response_cwmp_id, acs_session)
+
         software_url = acs_device.get_software_url(version=acs_device.get_desired_software_version())
         cwmp_obj = fromstring(get_soap_xml_object(cwmp_rpc_method="Download",datadict={"url": software_url}))
+
         cmdkey = etree.SubElement(cwmp_obj, 'CommandKey')
         cmdkey.text = response_cwmp_id
         body.append(cwmp_obj)
@@ -195,7 +207,7 @@ def _device_firmware_upgrade(acs_http_request,hook_state):
 
     # If we end here, the firmware version is OK
     logger.info(f"{acs_session}: Not updating firmware on {acs_device}, as it is the correct version.")
-    hook_state['firmware_ok'] = str(timezone.datetime.now())
+    hook_state['hook_done'] = str(timezone.datetime.now())
     return None,None,hook_state
 
 
@@ -271,7 +283,7 @@ def _get_acs_session(request,AcsSession):
         logger.info(f"Got no acs_session cookie from client (ip: {ip}), creating new acs_session")
 
     # Create a new acs_session, if no valid session found
-    return AcsSession(client_ip=ip,hook_state=json.dumps({}))
+    return AcsSession(client_ip=ip,hook_state={})
 
 
 def _ratelimit_acs_sessions(acs_session):
