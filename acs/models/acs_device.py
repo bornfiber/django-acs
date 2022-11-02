@@ -36,6 +36,7 @@ class AcsDevice(AcsBaseModel):
     acs_parameters = models.TextField(blank=True)
     acs_parameters_time = models.DateTimeField(null=True, blank=True)
     imported = models.BooleanField(default=False)
+    acs_connectionrequest_url = models.CharField(max_length=50, blank=True)
     acs_connectionrequest_password = models.CharField(max_length=50, blank=True)
     firmware_only = models.BooleanField(default=False)
     hook_state = JSONField(blank=True,null=True)
@@ -250,14 +251,6 @@ class AcsDevice(AcsBaseModel):
             }
         return OrderedDict(sorted(paramdict.items()))
 
-    @property
-    def acs_connection_request_url(self):
-        if not self.latest_acs_session:
-            # we have not had any acs sessions for this device
-            return False
-        root_object = self.latest_acs_session.root_data_model.root_object
-        return self.acs_get_parameter_value('%s.ManagementServer.ConnectionRequestURL' % root_object)
-
     def acs_get_parameter_value(self, parameterpath):
         if not self.acs_parameters or not parameterpath:
             return False
@@ -274,7 +267,7 @@ class AcsDevice(AcsBaseModel):
 
     def acs_http_connection_request(self):
         ### get what we need
-        url = self.acs_connection_request_url
+        url = self.acs_connectionrequest_url
         if not url or not self.acs_connectionrequest_password:
             logger.error("unable to make a connectionrequest without url or credentials")
             return False

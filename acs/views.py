@@ -18,7 +18,7 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
-from .hooks import process_inform, _preconfig, _device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp
+from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp, beacon_extender_test
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
@@ -92,24 +92,36 @@ class AcsServerView2(View):
 
         # Get the hook state
         hook_state = acs_session.hook_state
+        # Initialize hook_state if it is None
+        if hook_state is None:
+            hook_state = {}
 
         hook_list = [
-            (process_inform,"_process_inform"),
+            (process_inform,"process_inform"),
             (configure_xmpp,"configure_xmpp"),
+            (device_attributes,"device_attributes"),
             (_device_firmware_upgrade,"_device_firmware_upgrade"),
-#            (_preconfig,"_preconfig"),
-#            (_verify_client_ip,"_verify_client_ip"),
-#            (_device_config,"_device_config"),
+            (beacon_extender_test,"beacon_extender_test"),
+            (preconfig,"preconfig"),
+            (_verify_client_ip,"_verify_client_ip"),
+            (device_config,"device_config"),
             (track_parameters,"track_parameters"),
         ]
 
         ### CALL THE HOOKS
-        for (hook_function,hook_state_storage) in hook_list:
-            logger.info(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_storage}")
-            response_root,response_body,new_hook_state = hook_function(acs_http_request,hook_state.get(hook_state_storage,{}).copy())
-            hook_state[hook_state_storage] = new_hook_state
-            acs_session.hook_state = hook_state
+        for (hook_function,hook_state_key) in hook_list:
+            current_hook_state = hook_state.get(hook_state_key,{}).copy()
+
+            if "hook_done" in current_hook_state.keys():
+                continue
+
+            logger.info(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_key}")
+
+            response_root,response_body,new_hook_state = hook_function(acs_http_request,current_hook_state)
+
+            acs_session.hook_state[hook_state_key] = new_hook_state
             acs_session.save()
+
             if response_root == False:
                 # Something is wrong, kill the session.
                 response = HttpResponseBadRequest()
