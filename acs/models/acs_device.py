@@ -245,7 +245,7 @@ class AcsDevice(AcsBaseModel):
             paramdict[child.find('Name').text] = {
                 'type': value.attrib['{%s}type' % acs_settings.SOAP_NAMESPACES['xsi']],
                 'value': value.text,
-                'writable': child.find('Writable').text,
+                'writable': child.find('Writable').text if child.find('Writable') is not None else "N/A",
                 'notification': child.find('Notification').text if child.find('Notification') is not None else "N/A",
                 'accesslist': ",".join([acl.text if acl.text is not None else "N/A" for acl in child.find('AccessList').getchildren()]) if child.find('AccessList') is not None else "N/A",
             }

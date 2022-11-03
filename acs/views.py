@@ -18,7 +18,7 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
-from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp, beacon_extender_test
+from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
@@ -99,11 +99,11 @@ class AcsServerView2(View):
         hook_list = [
             (process_inform,"process_inform"),
             (configure_xmpp,"configure_xmpp"),
-            (device_attributes,"device_attributes"),
-            (_device_firmware_upgrade,"_device_firmware_upgrade"),
+            #(device_attributes,"device_attributes"),
+            (device_firmware_upgrade,"device_firmware_upgrade"),
             (beacon_extender_test,"beacon_extender_test"),
             (preconfig,"preconfig"),
-            (_verify_client_ip,"_verify_client_ip"),
+            (verify_client_ip,"verify_client_ip"),
             (device_config,"device_config"),
             (track_parameters,"track_parameters"),
         ]
@@ -167,82 +167,7 @@ class AcsServerView2(View):
         return response
 
 
-def _device_firmware_upgrade(acs_http_request,hook_state):
-    acs_session = acs_http_request.acs_session
-    acs_device = acs_session.acs_device
-    related_device = acs_device.get_related_device()
 
-
-    if 'hook_done' in hook_state.keys():
-        return None,None,hook_state
-
-    if 'download_ok' in hook_state.keys():
-        return None,None,hook_state
-
-    if 'download_failed' in hook_state.keys():
-        return None,None,hook_state
-
-    if 'download_cwmp_id' in hook_state.keys():
-        # We have issued a download command, lets check if the response matches the cwmp id.
-        if acs_http_request.cwmp_rpc_method == "DownloadResponse":
-            logger.info(f"{acs_session}: Checking if DownloadResponse is ok.")
-            rpc_response = acs_http_request.soap_body.find('cwmp:%s' % acs_http_request.cwmp_rpc_method, acs_http_request.acs_session.soap_namespaces)
-            status = rpc_response.find("Status")
-            if status is None:
-                logger.info(f"{acs_session}: {acs_device} sent DownloadResponse without status code")
-            else:
-                if status.text in ['0','1']:
-                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse.")
-                    hook_state['download_ok'] = str(timezone.datetime.now())
-                else:
-                    logger.info(f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse.")
-                    hook_state['download_failed'] = str(timezone.datetime.now())
-
-            return None,None,hook_state
-
-    if acs_device.get_desired_software_version() and acs_device.current_software_version != acs_device.get_desired_software_version():
-        # If we need a different software we upgrade the device.
-        logger.info(f"{acs_session}: Updating firmware on {acs_device}, {acs_device.current_software_version} -> {acs_device.get_desired_software_version()}")
-        response_cwmp_id = uuid.uuid4().hex
-        root, body = get_soap_envelope(response_cwmp_id, acs_session)
-
-        software_url = acs_device.get_software_url(version=acs_device.get_desired_software_version())
-        cwmp_obj = fromstring(get_soap_xml_object(cwmp_rpc_method="Download",datadict={"url": software_url}))
-
-        cmdkey = etree.SubElement(cwmp_obj, 'CommandKey')
-        cmdkey.text = response_cwmp_id
-        body.append(cwmp_obj)
-        hook_state['download_cwmp_id'] = response_cwmp_id
-        response = etree.tostring(root)
-
-        return root,body,hook_state
-
-    # If we end here, the firmware version is OK
-    logger.info(f"{acs_session}: Not updating firmware on {acs_device}, as it is the correct version.")
-    hook_state['hook_done'] = str(timezone.datetime.now())
-    return None,None,hook_state
-
-
-def _verify_client_ip(acs_http_request,hook_state):
-    acs_session = acs_http_request.acs_session
-    acs_device = acs_session.acs_device
-    related_device = acs_device.get_related_device()
-
-    if not related_device:
-        logger.info(f"{acs_session}: Skip verify client IP, as there is not related device for {acs_device}.")
-        return None,None,hook_state
-
-    if 'client_ip_verified' in hook_state.keys():
-        # If the client IP is already verified do nothing.
-        return None,None,hook_state
-
-    # set acs_session.client_ip_verified based on the outcome of verify_acs_client_ip(acs_session.client_ip) 
-    acs_session.client_ip_verified = acs_session.acs_device.get_related_device().verify_acs_client_ip(acs_session.client_ip)
-    logger.info(f"{acs_session}: client_ip_verified set to {acs_session.client_ip_verified} for client (ip: {acs_session.client_ip})")
-    acs_session.save()
-
-    hook_state["client_ip_verified"] = str(timezone.datetime.now())
-    return None,None,hook_state
 
 
 ################################################################################################################################
