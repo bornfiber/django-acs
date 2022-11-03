@@ -1,4 +1,4 @@
-import json
+import json, logging, uuid
 from lxml import etree
 from ipware.ip import get_ip
 from defusedxml.lxml import fromstring
@@ -13,11 +13,273 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.db.models import F
 
+
 from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
-from .response import nse, get_soap_envelope
+from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
+from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip
 
+logger = logging.getLogger('django_acs.%s' % __name__)
+
+
+class AcsServerView2(View):
+    @method_decorator(csrf_exempt)
+    def dispatch(self, *args, **kwargs):
+        # Like a general in a war, this dispatch method is only here to get decorated
+        return super(AcsServerView2, self).dispatch(*args, **kwargs)
+
+    def post(self, request, *args, **kwargs):
+        # Get the session, if none found return a new in memory only session
+        acs_session = _get_acs_session(request,AcsSession)
+
+        # Get a bool that tells us if the client exceeds the ratelimit
+        exceeds_ratelimit = _ratelimit_acs_sessions(acs_session)
+
+        # Reject the request if it exceeds the ratelimit
+#        if exceeds_ratelimit:
+#            return HttpResponse(status=420)
+
+        # Empty posts without a session are discarded at once.
+        if not request.body and not acs_session.pk:
+            logger.info(f"Discarding request without body because it has no session. (ip: {acs_session.client_ip})")
+            return HttpResponseBadRequest()
+
+        # If the acs_Session is in memory only, we save it now.
+        if not acs_session.pk:
+            acs_session.save()
+
+        # Limit each session to 20 acs_http_requests
+        if acs_session.acs_http_requests.count() > 20:
+            message = f"Killing {acs_session.pk}: It has more than 20 acs_http_requests, something looping ??"
+            logger.warning(message)
+            return HttpResponseBadRequest(message)
+
+        # Save the acs_http_request, and return the acs_http_request, request_xml and request_headerdict.
+        acs_http_request,request_xml,request_headerdict = _save_acs_http_request(acs_session,request)
+
+        # If we have a request body, try to parse it.
+        if acs_http_request.body:
+            # If we don't have a valid XML body, stop here.
+            if request_xml is None:
+                message = f"Invalid XML body posted by client (ip: {acs_session.client_ip}"
+                logger.warning(message)
+                return HttpResponseBadRequest(message)
+
+            # Validate XML namespce
+            xml_ns = _get_xml_ns(request_xml,acs_session)
+            if xml_ns:
+                acs_session.cwmp_namespace = xml_ns
+            else:
+                return HttpResponseBadRequest("Request XML is malformed.")
+
+            # Validate SOAP request
+            soap_body = _validate_soap(request_xml,acs_http_request)
+
+            if soap_body is not None:
+                acs_http_request.request_soap_valid = True
+            else:
+                return HttpResponseBadRequest("Request SOAP is malformed.")
+
+        else:
+            # We dit not receive a body,set it to None
+            acs_http_request.cwmp_id = ''
+            acs_http_request.soap_element = '{%s}(empty request body)' % acs_http_request.acs_session.soap_namespaces['cwmp']
+
+        # Basic validation is now done. Save the acs_session
+        acs_http_request.save()
+        acs_session.save()
+
+        # Get the hook state
+        hook_state = acs_session.hook_state
+        # Initialize hook_state if it is None
+        if hook_state is None:
+            hook_state = {}
+
+        hook_list = [
+            (process_inform,"process_inform"),
+            (configure_xmpp,"configure_xmpp"),
+            #(device_attributes,"device_attributes"),
+            (device_firmware_upgrade,"device_firmware_upgrade"),
+            (beacon_extender_test,"beacon_extender_test"),
+            (preconfig,"preconfig"),
+            (verify_client_ip,"verify_client_ip"),
+            (device_config,"device_config"),
+            (track_parameters,"track_parameters"),
+        ]
+
+        ### CALL THE HOOKS
+        for (hook_function,hook_state_key) in hook_list:
+            current_hook_state = hook_state.get(hook_state_key,{}).copy()
+
+            if "hook_done" in current_hook_state.keys():
+                continue
+
+            logger.info(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_key}")
+
+            response_root,response_body,new_hook_state = hook_function(acs_http_request,current_hook_state)
+
+            acs_session.hook_state[hook_state_key] = new_hook_state
+            acs_session.save()
+
+            if response_root == False:
+                # Something is wrong, kill the session.
+                response = HttpResponseBadRequest()
+                response['Set-Cookie'] = f"acs_session_id={acs_session.hexid}; Max-Age=60; Path=/"
+                return response
+            elif response_root == None:
+                # The hook did not want to do anything.
+                pass
+            else:
+                # Sent the response returned from the hook.
+                response_data = etree.tostring(response_root, encoding='utf-8', xml_declaration=True)
+                response = HttpResponse(response_data, content_type='text/xml; charset=utf-8')
+                response['Set-Cookie'] = f"acs_session_id={acs_session.hexid}; Max-Age=60; Path=/"
+                # The hook returned a resonse, save it and send it.
+                acs_http_response = acs_http_request.rpc_responses.create(
+                    http_request = acs_http_request,
+                    fk_body=create_xml_document(xml=response.content),
+                    cwmp_id=acs_http_request.cwmp_id,
+                    soap_element = response_body[0].tag
+                )
+                return response
+
+
+        # If we end up here, no hook wanted to do anything. End the session.
+        logger.info("End of view !!")
+
+        response = HttpResponse(status=204)
+        response['Set-Cookie'] = f"acs_session_id={acs_session.hexid}; Max-Age=60; Path=/"
+
+        # Save the empty response
+        acs_http_response = acs_http_request.rpc_responses.create(
+            http_request = acs_http_request,
+            fk_body=create_xml_document(xml=response.content),
+            cwmp_id=acs_http_request.cwmp_id,
+            soap_element = f"EmptyResponse",
+        )
+        # Save the acs_device, it might have been changed by a hook.
+        acs_session.acs_device.save()
+        # Update the session with result.
+        acs_session.session_result = True
+        acs_session.save()
+
+        return response
+
+
+
+
+
+################################################################################################################################
+
+def _validate_soap(request_xml,acs_http_request):
+    soap_header = request_xml.find('soap-env:Header', acs_http_request.acs_session.soap_namespaces)
+    soap_body = request_xml.find('soap-env:Body', acs_http_request.acs_session.soap_namespaces)
+
+    if soap_body is None:
+        # a soap body is required..
+        logger.info(f"{acs_http_request.acs_session}: Unable to find SOAP body in xml posted by client (ip: {acs_http_request.acs_session.ip})")
+        return False
+
+    if soap_header is not None:
+        ### parse the cwmp id from the soap header
+        acs_http_request.cwmp_id = soap_header.find('cwmp:ID', acs_http_request.acs_session.soap_namespaces).text
+        acs_http_request.soap_element = list(soap_body)[0].tag
+        acs_http_request.save()
+        ### do we have exactly one soap object in this soap body?
+        if len(list(soap_body)) != 1:
+            logger.info(f"{acs_http_request.acs_session}: Client sent multiple SOAP bodies (ip: {acs_http_request.acs_session.ip}")
+            return False
+        else:
+            return soap_body
+
+
+def _get_xml_ns(request_xml,acs_session):
+    # Va:lidate that we indeed have a CMWP request that is valid, and extract the SOAP data.    else:
+    if not 'cwmp' in request_xml.nsmap:
+        logger.info(f"{acs_session}, No cwmp namespace found in the soap envelope, this is not a valid CWMP request posted by client (ip: {acs_session.ip})")
+        return False
+    else:
+        return request_xml.nsmap['cwmp']
+
+def _get_acs_session(request,AcsSession):
+    ip = get_ip(request)
+    # Do we have an acs_session_id cookie ?
+    if 'acs_session_id' in request.COOKIES:
+        hexid = request.COOKIES['acs_session_id']
+
+        # See if we have an unfinished ACS session already
+        try:
+            acs_session = AcsSession.objects.get(acs_session_id=hexid, session_result=False)
+            logger.info(f"Got {acs_session} cookie from client (ip: {ip}), and found a valid acs_session.")
+            return acs_session
+        except AcsSession.DoesNotExist:
+            logger.info(f"Invalid acs_session_id from client (ip: {ip}), creating new acs_session")
+
+    else:
+        logger.info(f"Got no acs_session cookie from client (ip: {ip}), creating new acs_session")
+
+    # Create a new acs_session, if no valid session found
+    return AcsSession(client_ip=ip,hook_state={})
+
+
+def _ratelimit_acs_sessions(acs_session):
+    inform_interval = acs_settings.INFORM_INTERVAL
+    inform_limit = acs_settings.INFORM_LIMIT_PER_INTERVAL
+    # If the acs_Session has a pk, it is a pre exsisting session from the DB, allow it.
+    if acs_session.pk:
+        return False
+
+    # Count the number of previous ACS sessions from thios client ip, within the inform_interval.
+    session_count = AcsSession.objects.filter(
+        client_ip=acs_session.client_ip,
+        created_date__gt=timezone.now()-timedelta(seconds=inform_interval),
+    ).count()
+
+    # If we have more than allowed sessions within the informinterval, reject the request.
+    if session_count > inform_limit:
+        logger.info(f"acs session for client (ip: {acs_session.client_ip}) denied, seen {session_count} sessions, limit is {inform_limit}")
+        return True
+
+    # Allow the session
+    return False
+
+def _parse_acs_request_header(request,acs_session):
+    headerdict = {}
+    for key, value in request.META.items():
+        ### in django all HTTP headers are prefixed with HTTP_ in request.META
+        if key[:5] == 'HTTP_':
+            headerdict[key] = value
+    return headerdict
+
+def _parse_acs_request_xml(request,acs_session):
+    if request.body:
+        try:
+            xmlroot = fromstring(request.body.decode('utf-8','ignore').encode('utf-8'))
+            return xmlroot
+        except Exception as E:
+            logger.info(f"got exception parsing ACS XML: {E}")
+    return None
+
+def _save_acs_http_request(acs_session,request):
+    request_headerdict = _parse_acs_request_header(request,acs_session)
+    request_xml = _parse_acs_request_xml(request,acs_session)
+
+    validxml = False
+    if request_xml is not None:
+        validxml = True
+
+    acs_http_request = acs_session.acs_http_requests.create(
+        request_headers=json.dumps(request_headerdict),
+        request_xml_valid=validxml,
+        fk_body=create_xml_document(xml=request.body),
+    )
+
+    logger.info(f"{acs_session}: saved {acs_http_request} to db")
+    return acs_http_request,request_xml,request_headerdict
+
+
+### OLD AcsServerView ###
 
 class AcsServerView(View):
     @method_decorator(csrf_exempt)
@@ -247,7 +509,7 @@ class AcsServerView(View):
                     acs_device.acs_latest_session_result = False
                     acs_device.acs_inform_count = F('acs_inform_count') + 1
                     acs_device.save()
-
+ 
                     # save acs_device to acs_session
                     acs_session.acs_device = acs_device
                     acs_session.save()
@@ -505,10 +767,10 @@ class AcsServerView(View):
                 print(f"Pulling next response from the queue, empty_response={empty_response}")
                 response = acs_http_request.get_response(empty_response=empty_response)
             else:
-                #####################################################################################################
+                '''
                 ### TODO: insert some code to handle soapfault here so we dont hit the "Unknown cwmp object/method" bit below when a soapfault happens
+                '''
 
-                #####################################################################################################
                 acs_session.acs_log('unknown cwmp object/method received from %s: %s' % (acs_session.acs_device, acs_http_request.cwmp_rpc_method))
                 return HttpResponseBadRequest('unknown cwmp object/method received')
 

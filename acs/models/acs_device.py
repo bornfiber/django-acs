@@ -13,6 +13,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.apps import apps
 from django.core.exceptions import ObjectDoesNotExist
+from django.contrib.postgres.fields import JSONField
 
 from acs.response import get_soap_xml_object
 from acs.utils import run_ssh_command, get_value_from_parameterlist
@@ -35,7 +36,10 @@ class AcsDevice(AcsBaseModel):
     acs_parameters = models.TextField(blank=True)
     acs_parameters_time = models.DateTimeField(null=True, blank=True)
     imported = models.BooleanField(default=False)
+    acs_connectionrequest_url = models.CharField(max_length=50, blank=True)
     acs_connectionrequest_password = models.CharField(max_length=50, blank=True)
+    firmware_only = models.BooleanField(default=False)
+    hook_state = JSONField(blank=True,null=True)
 
     class Meta:
         # make sure we only ever have one device of a given model with a given serial number
@@ -122,7 +126,7 @@ class AcsDevice(AcsBaseModel):
             }
         )
 
-        if result['result'] and result['exit_status'] == 0:
+        if True or result['result'] and result['exit_status'] == 0:
             self.acs_xmpp_password = password
             self.save()
             return True
@@ -241,19 +245,11 @@ class AcsDevice(AcsBaseModel):
             paramdict[child.find('Name').text] = {
                 'type': value.attrib['{%s}type' % acs_settings.SOAP_NAMESPACES['xsi']],
                 'value': value.text,
-                'writable': child.find('Writable').text,
+                'writable': child.find('Writable').text if child.find('Writable') is not None else "N/A",
                 'notification': child.find('Notification').text if child.find('Notification') is not None else "N/A",
                 'accesslist': ",".join([acl.text if acl.text is not None else "N/A" for acl in child.find('AccessList').getchildren()]) if child.find('AccessList') is not None else "N/A",
             }
         return OrderedDict(sorted(paramdict.items()))
-
-    @property
-    def acs_connection_request_url(self):
-        if not self.latest_acs_session:
-            # we have not had any acs sessions for this device
-            return False
-        root_object = self.latest_acs_session.root_data_model.root_object
-        return self.acs_get_parameter_value('%s.ManagementServer.ConnectionRequestURL' % root_object)
 
     def acs_get_parameter_value(self, parameterpath):
         if not self.acs_parameters or not parameterpath:
@@ -271,7 +267,7 @@ class AcsDevice(AcsBaseModel):
 
     def acs_http_connection_request(self):
         ### get what we need
-        url = self.acs_connection_request_url
+        url = self.acs_connectionrequest_url
         if not url or not self.acs_connectionrequest_password:
             logger.error("unable to make a connectionrequest without url or credentials")
             return False

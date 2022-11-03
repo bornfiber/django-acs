@@ -53,8 +53,8 @@ beacon_acs_device_parametermap = {
     "django_acs.acs.xmpp_connection_username": "XMPP.Connection.1.Username",
     "django_acs.acs.xmpp_connection_usetls": "XMPP.Connection.1.UseTLS",
     "django_acs.acs.xmpp_connreq_connection": "",
-    "django_acs.acs.xmpp_server": "",
-    "django_acs.acs.xmpp_server_port": "",
+    "django_acs.acs.xmpp_server": "XMPP.Connection.1.Resource",
+    "django_acs.acs.xmpp_server_port": "XMPP.Connection.1.X_ALU_COM_XMPP_Port",
     "django_acs.deviceinfo.softwareversion": "DeviceInfo.SoftwareVersion",
     "django_acs.deviceinfo.uptime": "DeviceInfo.UpTime",
     "django_acs.management.ip.servicelist": "WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.X_D0542D_ServiceList",
@@ -87,6 +87,4 @@ beacon_acs_device_parametermap = {
     "django_acs.wifi.n_ssidbroadcast": "",
     "django_acs.wifi.n_wpapsk": "LANDevice.1.WLANConfiguration.1.PreSharedKey.1.KeyPassphrase"
 }
-
-
 

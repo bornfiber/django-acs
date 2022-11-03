@@ -10,6 +10,7 @@ from django.contrib.postgres.fields import DateTimeRangeField
 from django.utils import timezone
 from django.conf import settings
 from django.db import models
+from django.contrib.postgres.fields import JSONField
 
 from acs.models import AcsHttpResponse, AcsQueueJob
 from acs.utils import *
@@ -37,6 +38,7 @@ class AcsSession(AcsBaseModel):
     inform_eventcodes = ArrayField(models.TextField(), default=list, blank=True)
     cwmp_namespace = models.CharField(max_length=100, default='', blank=True)
     root_data_model = models.ForeignKey('acs.CwmpDataModel', null=True, blank=True, related_name='acs_sessions', on_delete=models.PROTECT)
+    hook_state = JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ['-created_date']
@@ -161,7 +163,7 @@ class AcsSession(AcsBaseModel):
             configdict['django_acs.acs.xmpp_connection_username'] = self.acs_device.acs_xmpp_username
             configdict['django_acs.acs.xmpp_connection_password'] = self.acs_device.acs_xmpp_password
             configdict['django_acs.acs.xmpp_connection_domain'] = settings.ACS_XMPP_DOMAIN # all ACS clients connect to the same XMPP server domain for now
-            configdict['django_acs.acs.xmpp_connection_usetls'] = True
+            configdict['django_acs.acs.xmpp_connection_usetls'] = False
             configdict['django_acs.acs.xmpp_connreq_connection'] = '%s.XMPP.Connection.1.' % self.root_data_model.root_object
 
         # set connectionrequest credentials?
