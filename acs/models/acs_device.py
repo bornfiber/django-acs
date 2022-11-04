@@ -36,7 +36,7 @@ class AcsDevice(AcsBaseModel):
     acs_parameters = models.TextField(blank=True)
     acs_parameters_time = models.DateTimeField(null=True, blank=True)
     imported = models.BooleanField(default=False)
-    acs_connectionrequest_url = models.CharField(max_length=50, blank=True)
+    acs_connectionrequest_url = models.CharField(max_length=100, blank=True)
     acs_connectionrequest_password = models.CharField(max_length=50, blank=True)
     firmware_only = models.BooleanField(default=False)
     hook_state = JSONField(blank=True,null=True)
