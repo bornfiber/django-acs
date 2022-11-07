@@ -193,12 +193,19 @@ def process_inform(acs_http_request, hook_state):
 
 
 def configure_xmpp(acs_http_request, hook_state):
-    # Everyone GETS XMPP config if the configkey is empty.
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
-    if "hook_done" in hook_state.keys():
-        return None, None, hook_state
+    # Every device get at least a XMPP config.
+    if acs_device.get_desired_config_level() and acs_device.current_config_level == acs_device.get_desired_config_level():
+        hook_state["hook_done"] = str(timezone.now())
+        logger.info(f"{acs_session.tag}/{acs_device}: not doing xmpp_config, current_config_level is up to date.")
+        return None,None,hook_state
+
+    if acs_device.current_config_level == settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE:
+        hook_state["hook_done"] = str(timezone.now())
+        logger.info(f"{acs_session.tag}/{acs_device}: not doing xmpp_config, already done (no desired_config_level set).")
+        return None,None,hook_state
 
     # Process responses section
     if acs_http_request.cwmp_rpc_method == "GetParameterNamesResponse":
@@ -292,7 +299,14 @@ def configure_xmpp(acs_http_request, hook_state):
     # Set the parameters
     logger.info(f"{acs_session.tag}/{acs_device}: Configuring XMPP")
     cwmp_id = uuid.uuid4().hex
-    parameter_key = str(acs_device.current_config_level)
+
+    # Set the praramterkey, if there is no desired_config_level, use a placeholder value of "xmpp_done".
+    if acs_device.current_config_level is None:
+        parameter_key = str(settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE)
+    else:
+        # If there is a current config level, we reuse it.
+        parameter_key = str(acs_device.current_config_level)
+
     root, body = _cwmp_SetParameterValues_soap(
         config_dict, parameter_key, cwmp_id, acs_session
     )
@@ -354,7 +368,7 @@ def track_parameters(acs_http_request, hook_state):
     if "tracked_parameters" not in hook_state.keys():
         tracked_parameters = load_tracked_parameters(acs_device)
         cwmp_id = uuid.uuid4().hex
-        logger.info(f'{acs_session.tag}: tracked_parameters: "{tracked_parameters}"')
+        #logger.info(f'{acs_session.tag}: tracked_parameters: "{tracked_parameters}"')
         hook_state["tracked_parameters"] = tracked_parameters
         hook_state["pending_cwmp_id"] = cwmp_id
         root, body = cwmp_GetPrameterValues_soap(
@@ -424,7 +438,8 @@ def device_config(acs_http_request, hook_state):
 
     if not related_device:
         hook_state["no_related_device"] = True
-        logger.info(f"{acs_session.tag}: {acs_device} has no related related_device.")
+        logger.info(f"{acs_session.tag}: {acs_device} has no related related_device not configuring.")
+        hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
     # Process incoming GetParameterNamesResponse
@@ -502,11 +517,12 @@ def device_config(acs_http_request, hook_state):
 
     # Set the parameters
     cwmp_id = uuid.uuid4().hex
-    parameter_key = str(acs_device.desired_config_level)
+    parameter_key = str(acs_device.get_desired_config_level())
     root, body = _cwmp_SetParameterValues_soap(
         config_dict, parameter_key, cwmp_id, acs_session
     )
 
+    acs_device.current_config_level = acs_device.get_desired_config_level()
     hook_state["hook_done"] = str(timezone.now())
     return root, body, hook_state
 
@@ -1069,7 +1085,6 @@ def load_tracked_parameters(acs_device):
             continue
         if line.startswith("#"):
             continue
-        # if not line.endswith("."): continue
 
         device_tracked_set.add(line.strip())
 
