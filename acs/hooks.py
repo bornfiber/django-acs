@@ -638,7 +638,6 @@ def device_firmware_upgrade(acs_http_request, hook_state):
         acs_device.get_desired_software_version()
         and acs_device.current_software_version
         != acs_device.get_desired_software_version()
-        or True
     ):
 
         # Don't download if the device jst reporter transfer complete.
