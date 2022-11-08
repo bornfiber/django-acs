@@ -596,6 +596,8 @@ def device_firmware_upgrade(acs_http_request, hook_state):
     acs_device = acs_session.acs_device
     related_device = acs_device.get_related_device()
 
+    device_hook_state = acs_device.hook_state.get("device_firmware_upgrade",{})
+
     if "hook_done" in hook_state.keys():
         return None, None, hook_state
 
@@ -636,9 +638,19 @@ def device_firmware_upgrade(acs_http_request, hook_state):
         acs_device.get_desired_software_version()
         and acs_device.current_software_version
         != acs_device.get_desired_software_version()
+        or True
     ):
+
+        # Don't download if the device jst reporter transfer complete.
         if "7 TRANSFER COMPLETE" in acs_session.inform_eventcodes:
             logger.info(f"{acs_session.tag}/{acs_device}: Suppessing firmware update, as this session has INFORM code \"7 TRANSFER COMPLETE\" ")
+            hook_state["hook_done"] = str(timezone.now())
+            return None, None, hook_state
+
+        # Don't send more than one download command within 10 minutes.
+        download_time = parse_datetime(device_hook_state.get("download_command_sent_at",""))
+        if download_time and download_time + timezone.timedelta(minutes=10) > timezone.now():
+            logger.info(f"{acs_session.tag}/{acs_device}: device_firmware_upgrade is in 10 minutes holdoff period.")
             hook_state["hook_done"] = str(timezone.now())
             return None, None, hook_state
 
@@ -656,7 +668,9 @@ def device_firmware_upgrade(acs_http_request, hook_state):
 
         root, body = cwmp_Download(software_url, cwmp_id, acs_session)
         hook_state["download_cwmp_id"] = cwmp_id
-
+        device_hook_state["download_command_sent_at"] = str(timezone.now())
+        acs_device.hook_state["device_firmware_upgrade"] = device_hook_state
+        acs_device.save()
         return root, body, hook_state
 
     # If we end here, the firmware version is OK
