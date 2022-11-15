@@ -1,6 +1,8 @@
 from django.views.generic import ListView, DetailView
-from django.views.generic.edit import FormView, CreateView
+from django.views.generic.edit import FormView, CreateView, UpdateView
 from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
+from django.views.decorators.http import require_http_methods
 
 from acs.models import *
 from .forms import AcsDeviceActionForm
@@ -126,6 +128,25 @@ class AcsDeviceList(ListView):
 class AcsDeviceDetail(DetailView):
     model = AcsDevice
     template_name = 'acs_device_detail.html'
+
+@require_http_methods(["GET","POST"])
+def acs_device_action(request, pk, action):
+    acs_device = get_object_or_404(AcsDevice, id=pk)
+    acs_device_qs = AcsDevice.objects.filter(pk=acs_device.pk)
+
+    if request.method == "POST":
+        if action == "connection_request":
+            acs_device_qs.update(connection_request=True)
+        elif action == "full_parameters_request":
+            acs_device_qs.update(full_parameters_request=True)
+        elif action == "factory_default_request":
+            acs_device_qs.update(factory_default_request=True)
+        else:
+            return HttpResponse("Error")
+
+    acs_device.refresh_from_db()
+    return HttpResponse(f"CR:{acs_device.connection_request} / FP:{acs_device.full_parameters_request} / FD:{acs_device.factory_default_request}")
+
 
 
 class AllAcsSessions(ListView):

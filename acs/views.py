@@ -18,7 +18,8 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
-from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip
+from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default
+from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip, full_parameters_request
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
@@ -37,8 +38,8 @@ class AcsServerView2(View):
         exceeds_ratelimit = _ratelimit_acs_sessions(acs_session)
 
         # Reject the request if it exceeds the ratelimit
-#        if exceeds_ratelimit:
-#            return HttpResponse(status=420)
+        if settings.DEBUG is False and exceeds_ratelimit:
+            return HttpResponse(status=420)
 
         # Empty posts without a session are discarded at once.
         if not request.body and not acs_session.pk:
@@ -98,6 +99,7 @@ class AcsServerView2(View):
 
         hook_list = [
             (process_inform,"process_inform"),
+            (factory_default,"factory_default"),
             (configure_xmpp,"configure_xmpp"),
             #(device_attributes,"device_attributes"),
             (device_firmware_upgrade,"device_firmware_upgrade"),
@@ -106,6 +108,7 @@ class AcsServerView2(View):
             (verify_client_ip,"verify_client_ip"),
             (device_config,"device_config"),
             (track_parameters,"track_parameters"),
+            (full_parameters_request,"full_parameters_request"),
         ]
 
         ### CALL THE HOOKS

@@ -38,8 +38,20 @@ class AcsDevice(AcsBaseModel):
     imported = models.BooleanField(default=False)
     acs_connectionrequest_url = models.CharField(max_length=100, blank=True)
     acs_connectionrequest_password = models.CharField(max_length=50, blank=True)
-    firmware_only = models.BooleanField(default=False)
     hook_state = JSONField(blank=True,null=True)
+
+    # Dedicated storage for on-demand full data retreivals
+    acs_full_parameters = JSONField(blank=True,null=True)
+    acs_full_parameters_time = models.DateTimeField(null=True, blank=True)
+
+    # Request full retreival in the next session.
+    full_parameters_request = models.BooleanField(default=False)
+
+    # Request Factory default in the next session.
+    factory_default_request = models.BooleanField(default=False)
+
+    # Request that a connection request is sent to the AcsDevice
+    connection_request = models.BooleanField(default=False)
 
     class Meta:
         # make sure we only ever have one device of a given model with a given serial number

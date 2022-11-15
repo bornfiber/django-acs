@@ -1,9 +1,9 @@
 {% load custom_template_filters %}
-{% include 'includes/collapsable-panel-header.html' with name='WifiDeviceParametersList' headline=headline|default:"WiFi Device ACS Parameters Last Updated: "|addstr:acs_device.acs_parameters_time %}
+{% include 'includes/collapsable-panel-header.html' with name='FullParametersList' headline=headline|default:"Full ACS Parameters Last Updated: "|addstr:acs_device.acs_full_parameters_time %}
         <form class="form-inline">
           <div class="form-group">
             <label for="search">Filter:</label>
-            <input type="text" class="form-control" id="search">
+            <input type="text" class="form-control" id="full_search">
           </div>
         </form>
         <table class="table">
@@ -18,8 +18,8 @@
                 </tr>
             </thead>
             <tbody>
-              {% for key, value in acs_device.acs_parameter_dict.items %}
-                <tr class="acsparameter">
+              {% for key, value in acs_device.acs_full_parameters.items %}
+                <tr class="full_acsparameter">
                     <td>{{ key }}</td>
                     <td>{{ value.type }}</td>
                     <td>{{ value.writable }}</td>
@@ -32,10 +32,10 @@
         </table>
 
         <script>
-        var $full_rows = $('tr.acsparameter');
-        $('#search').keyup(function() {
+        var $rows = $('tr.full_acsparameter');
+        $('#full_search').keyup(function() {
             var val = $.trim($(this).val()).replace(/ +/g, ' ').toLowerCase();
-            $full_rows.show().filter(function() {
+            $rows.show().filter(function() {
                 var text = $(this).text().replace(/\s+/g, ' ').toLowerCase();
                 return !~text.indexOf(val);
             }).hide();

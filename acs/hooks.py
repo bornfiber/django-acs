@@ -196,16 +196,28 @@ def configure_xmpp(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
-    # Every device get at least a XMPP config.
-    if acs_device.get_desired_config_level() and acs_device.current_config_level == acs_device.get_desired_config_level():
-        hook_state["hook_done"] = str(timezone.now())
-        logger.info(f"{acs_session.tag}/{acs_device}: not doing xmpp_config, current_config_level is up to date.")
-        return None,None,hook_state
+    # Every device get at least a XMPP config either on boot or when config_level is out of sync or empty.
 
-    if acs_device.current_config_level == settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE:
+    if "1 BOOT" in acs_session.inform_eventcodes:
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: xmpp_config, configuring beacause of BOOT."
+        )
+    elif acs_device.current_config_level is None:
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: xmpp_config, configuring beacause current_config_level is None."
+        )
+    elif acs_device.get_desired_config_level() and acs_device.current_config_level == acs_device.get_desired_config_level():
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: xmpp_config, not configuring current_config_level == desired_config_level."
+        )
         hook_state["hook_done"] = str(timezone.now())
-        logger.info(f"{acs_session.tag}/{acs_device}: not doing xmpp_config, already done (no desired_config_level set).")
-        return None,None,hook_state
+        return None, None, hook_state
+    elif acs_device.get_desired_config_level() is None:
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: xmpp_config, not configuring no desired_config_level, and no other reason to configure."
+        )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
 
     # Process responses section
     if acs_http_request.cwmp_rpc_method == "GetParameterNamesResponse":
@@ -368,7 +380,7 @@ def track_parameters(acs_http_request, hook_state):
     if "tracked_parameters" not in hook_state.keys():
         tracked_parameters = load_tracked_parameters(acs_device)
         cwmp_id = uuid.uuid4().hex
-        #logger.info(f'{acs_session.tag}: tracked_parameters: "{tracked_parameters}"')
+        # logger.info(f'{acs_session.tag}: tracked_parameters: "{tracked_parameters}"')
         hook_state["tracked_parameters"] = tracked_parameters
         hook_state["pending_cwmp_id"] = cwmp_id
         root, body = cwmp_GetPrameterValues_soap(
@@ -411,7 +423,7 @@ def device_config(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
-    if "no_preconfig" in acs_device.hook_state.keys():
+    if "no_config" in acs_device.hook_state.keys():
         hook_state["hook_done"] = True
         return None, None, hook_state
 
@@ -438,7 +450,9 @@ def device_config(acs_http_request, hook_state):
 
     if not related_device:
         hook_state["no_related_device"] = True
-        logger.info(f"{acs_session.tag}: {acs_device} has no related related_device not configuring.")
+        logger.info(
+            f"{acs_session.tag}: {acs_device} has no related related_device not configuring."
+        )
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
@@ -591,12 +605,97 @@ def preconfig(acs_http_request, hook_state):
     return root, body, hook_state
 
 
+def full_parameters_request(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+
+    if acs_device.full_parameters_request is not True:
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # Initialize the data struct, if it does not exist.
+    if "data" not in hook_state.keys():
+        hook_state["data"] = {}
+
+    # Process responses
+    if (
+        acs_http_request.cwmp_rpc_method == "GetParameterNamesResponse"
+        and acs_http_request.cwmp_id == "full_parameters_request_names"
+    ):
+        for infostruct in acs_http_request.soap_body.findall('.//ParameterInfoStruct'):
+            key = infostruct.find('Name').text
+            writable = infostruct.find('Writable').text
+            if key not in hook_state["data"].keys(): hook_state["data"][key] = {}
+            hook_state["data"][key]["writable"] = writable
+
+    if (
+        acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse"
+        and acs_http_request.cwmp_id == "full_parameters_request_values"
+    ):
+        for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
+            key = valuestruct.find('Name').text
+            value = valuestruct.find('Value').text
+            type = valuestruct.find('Value').attrib['{%s}type' % acs_settings.SOAP_NAMESPACES['xsi']]
+            if key not in hook_state["data"].keys(): hook_state["data"][key] = {}
+            hook_state["data"][key]["value"] = value
+            hook_state["data"][key]["type"] = type
+
+    if (
+        acs_http_request.cwmp_rpc_method == "GetParameterAttributesResponse"
+        and acs_http_request.cwmp_id == "full_parameters_request_attributes"
+    ):
+        for attributestruct in acs_http_request.soap_body.findall('.//ParameterAttributeStruct'):
+            key = attributestruct.find('Name').text
+            notification = attributestruct.find('Notification').text
+            if key not in hook_state["data"].keys(): hook_state["data"][key] = {}
+            hook_state["data"][key]["notification"] = notification
+
+    # Retreive Parameter Names,Attributes,Values
+    root_object = acs_session.root_data_model.root_object
+
+    if "get_names" not in hook_state.keys():
+        root, body = _cwmp_GetParameterNames_soap(
+            f"{root_object}.", "full_parameters_request_names", acs_session
+        )
+        hook_state["get_names"] = str(timezone.now())
+        hook_state["pending_cwmp_id"] = "full_parameters_request_names"
+        return root, body, hook_state
+
+    if "get_values" not in hook_state.keys():
+        root, body = cwmp_GetPrameterValues_soap(
+            [f"{root_object}."], "full_parameters_request_values", acs_session
+        )
+        hook_state["get_values"] = str(timezone.now())
+        hook_state["pending_cwmp_id"] = "full_parameters_request_values"
+        return root, body, hook_state
+
+    if "get_attributes" not in hook_state.keys():
+        root, body = cwmp_GetPrameterAttributes_soap(
+            [f"{root_object}."], "full_parameters_request_attributes", acs_session
+        )
+        hook_state["get_attributes"] = str(timezone.now())
+        hook_state["pending_cwmp_id"] = "full_parameters_request_attributes"
+        return root, body, hook_state
+
+    # If we end up here we are done, do final processsing.
+    parameter_count = len(hook_state["data"].keys())
+    logger.info(f"{acs_session.tag}/{acs_device}: full_parameters_request collected {parameter_count} paramters.")
+    acs_device.acs_full_parameters = hook_state["data"]
+    acs_device.acs_full_parameters_time = str(timezone.now())
+    acs_device.full_parameters_request = False
+    acs_device.save()
+
+    hook_state["data"]={}
+
+    return None, None, hook_state
+
+
 def device_firmware_upgrade(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
     related_device = acs_device.get_related_device()
 
-    device_hook_state = acs_device.hook_state.get("device_firmware_upgrade",{})
+    device_hook_state = acs_device.hook_state.get("device_firmware_upgrade", {})
 
     if "hook_done" in hook_state.keys():
         return None, None, hook_state
@@ -642,14 +741,23 @@ def device_firmware_upgrade(acs_http_request, hook_state):
 
         # Don't download if the device jst reporter transfer complete.
         if "7 TRANSFER COMPLETE" in acs_session.inform_eventcodes:
-            logger.info(f"{acs_session.tag}/{acs_device}: Suppessing firmware update, as this session has INFORM code \"7 TRANSFER COMPLETE\" ")
+            logger.info(
+                f'{acs_session.tag}/{acs_device}: Suppessing firmware update, as this session has INFORM code "7 TRANSFER COMPLETE" '
+            )
             hook_state["hook_done"] = str(timezone.now())
             return None, None, hook_state
 
         # Don't send more than one download command within 10 minutes.
-        download_time = parse_datetime(device_hook_state.get("download_command_sent_at",""))
-        if download_time and download_time + timezone.timedelta(minutes=10) > timezone.now():
-            logger.info(f"{acs_session.tag}/{acs_device}: device_firmware_upgrade is in 10 minutes holdoff period.")
+        download_time = parse_datetime(
+            device_hook_state.get("download_command_sent_at", "")
+        )
+        if (
+            download_time
+            and download_time + timezone.timedelta(minutes=10) > timezone.now()
+        ):
+            logger.info(
+                f"{acs_session.tag}/{acs_device}: device_firmware_upgrade is in 10 minutes holdoff period."
+            )
             hook_state["hook_done"] = str(timezone.now())
             return None, None, hook_state
 
@@ -691,7 +799,7 @@ def verify_client_ip(acs_http_request, hook_state):
         )
         return None, None, hook_state
 
-    if "client_ip_verified" in hook_state.keys():
+    if "hook_done" in hook_state.keys():
         # If the client IP is already verified do nothing.
         return None, None, hook_state
 
@@ -706,7 +814,7 @@ def verify_client_ip(acs_http_request, hook_state):
     )
     acs_session.save()
 
-    hook_state["client_ip_verified"] = str(timezone.datetime.now())
+    hook_state["hook_done"] = str(timezone.datetime.now())
     return None, None, hook_state
 
 
@@ -736,21 +844,39 @@ def beacon_extender_test(acs_http_request, hook_state):
 
     # PROCESS RESPONSE #
     if acs_http_request.cwmp_id == "beacon_extender_test:getnames":
-        logger.info(
-            f"{acs_session.tag}/{acs_device}: beacon_extender_test processing GetParameterNamesResponse/Fault."
-        )
-        if acs_http_request.soap_element_tuple[1] == "Fault":
-            logger.info(f"{acs_session.tag}/{acs_device}: Is a Beacon extender.")
-            # The beacon failed the test, it is running as an extender.
-            acs_device.hook_state["no_preconfig"] = True
-            acs_device.hook_state["no_config"] = True
-            acs_device.hook_state["no_track"] = True
-            acs_device.hook_state["beacon_extender"] = True
 
-        if acs_http_request.cwmp_rpc_method == "GetParameterNamesResponse":
-            logger.info(f"{acs_session.tag}/{acs_device}: Is a Beacon root node.")
-            # The beacon supports GetParameterNames, it is not running as an extender.
-            acs_device.hook_state["beacon_extender"] = False
+
+        if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse":
+            logger.info(
+                f"{acs_session.tag}/{acs_device}: beacon_extender_test processing GetParameterValuesResponse/Fault."
+            )
+            paramlist = acs_http_request.soap_body.find(".//ParameterList")
+
+            value_dict = {}
+            for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
+                key = valuestruct.find('Name').text
+                value = valuestruct.find('Value').text
+                value_dict[key] = value
+
+            if value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode",None) == "AP_Bridge":
+                # The beacon is an extender.
+                logger.info(
+                    f"{acs_session.tag}/{acs_device}: beacon is an extender."
+                )
+                acs_device.hook_state["no_preconfig"] = True
+                acs_device.hook_state["no_config"] = True
+                acs_device.hook_state["no_track"] = True
+                acs_device.hook_state["beacon_extender"] = True
+            elif value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode",None) == "RGW":
+                logger.info(
+                    f"{acs_session.tag}/{acs_device}: beacon is a router."
+                )
+                acs_device.hook_state["beacon_extender"] = False
+            else:
+                logger.info(
+                    f"{acs_session.tag}/{acs_device}: could not determine beacon router/extender status."
+                )
+
 
         acs_device.save()
         hook_state["hook_done"] = True
@@ -760,17 +886,31 @@ def beacon_extender_test(acs_http_request, hook_state):
         hook_state["getnames_sent"] = str(timezone.now())
         response_cwmp_id = "beacon_extender_test:getnames"
         hook_state["pending_cwmp_id"] = response_cwmp_id
-        root, body = _cwmp_GetParameterNames_soap(
-            "InternetGatewayDevice.DeviceInfo.",
+        root, body = cwmp_GetPrameterValues_soap(
+            ["InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode"],
             response_cwmp_id,
-            acs_session,
-            next_level=1,
+            acs_session
         )
 
         return root, body, hook_state
 
     # Catchall, should not be reached.
     return None, None, hook_state
+
+
+def factory_default(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+
+    if acs_device.factory_default_request is not True:
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    root, body = cwmp_FactoryReset_soap(acs_session)
+    acs_device.factory_default_request = False
+    acs_device.save()
+    return root,body, hook_state
+
 
 
 """ HOOK HELPER FUNCTIONS """
@@ -904,7 +1044,33 @@ def cwmp_GetPrameterValues_soap(key_list, cwmp_id, acs_session):
     return root, body
 
 
-def _cwmp_FactoryReset_soap(acs_session):
+def cwmp_GetPrameterAttributes_soap(key_list, cwmp_id, acs_session):
+    # Create a list of unique paramters we want to get info for.
+    get_list = []
+    for new_key in sorted(key_list, key=len):
+        found = False
+        for inserted_key in get_list:
+            if new_key.startswith(inserted_key):
+                found = True
+                break
+        if not found:
+            get_list.append(new_key)
+
+    cwmp_obj = etree.Element(nse("cwmp", "GetParameterAttributes"))
+    paramlist = etree.SubElement(cwmp_obj, "ParameterNames")
+
+    for key in get_list:
+        nameobj = etree.SubElement(paramlist, "string")
+        nameobj.text = key
+
+    paramlist.set(nse("soap-enc", "arrayType"), "xsd:string[%s]" % len(paramlist))
+    root, body = get_soap_envelope(cwmp_id, acs_session)
+    body.append(cwmp_obj)
+
+    return root, body
+
+
+def cwmp_FactoryReset_soap(acs_session):
     cwmp_obj = etree.Element(nse("cwmp", "FactoryReset"))
     root, body = get_soap_envelope("FactoryResetId", acs_session)
     body.append(cwmp_obj)
