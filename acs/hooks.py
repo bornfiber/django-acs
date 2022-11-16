@@ -906,7 +906,11 @@ def factory_default(acs_http_request, hook_state):
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
-    root, body = cwmp_FactoryReset_soap(acs_session)
+    # Process response
+
+
+    # Issue the factory default command.
+    root, body = cwmp_FactoryReset_soap("factory_default",acs_session)
     acs_device.factory_default_request = False
     acs_device.save()
     return root,body, hook_state
@@ -1070,9 +1074,9 @@ def cwmp_GetPrameterAttributes_soap(key_list, cwmp_id, acs_session):
     return root, body
 
 
-def cwmp_FactoryReset_soap(acs_session):
+def cwmp_FactoryReset_soap(cwmp_id, acs_session):
     cwmp_obj = etree.Element(nse("cwmp", "FactoryReset"))
-    root, body = get_soap_envelope("FactoryResetId", acs_session)
+    root, body = get_soap_envelope(cwmp_ids, acs_session)
     body.append(cwmp_obj)
 
     return root, body

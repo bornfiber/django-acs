@@ -75,6 +75,19 @@
                     </div>
                 </div>
             </div>
+            <style>
+                .blink-me {
+                    animation: blinker 1s linear;
+                }
+                @keyframes blinker {
+                    0% {
+                        opacity: 0.2;
+                    }
+                    100% {
+                        opacity: 1;
+                    }
+                }
+            </style>
             <div class="col-md-3">
                 <div class="panel panel-default" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
                     <div class="panel-body">
