@@ -133,6 +133,9 @@ class AcsServerView2(View):
             elif response_root == None:
                 # The hook did not want to do anything.
                 pass
+            elif response_root == "*END*":
+                logger.info(f"{acs_session.tag}: Hook want's to end the session.")
+                break
             else:
                 # Sent the response returned from the hook.
                 response_data = etree.tostring(response_root, encoding='utf-8', xml_declaration=True)
