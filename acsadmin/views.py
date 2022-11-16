@@ -1,6 +1,6 @@
 from django.views.generic import ListView, DetailView
 from django.views.generic.edit import FormView, CreateView, UpdateView
-from django.shortcuts import get_object_or_404
+from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
 
@@ -138,15 +138,17 @@ def acs_device_action(request, pk, action):
         if action == "connection_request":
             acs_device_qs.update(connection_request=True)
         elif action == "full_parameters_request":
-            acs_device_qs.update(full_parameters_request=True)
+            acs_device_qs.update(full_parameters_request=not acs_device.full_parameters_request)
         elif action == "factory_default_request":
-            acs_device_qs.update(factory_default_request=True)
+            acs_device_qs.update(factory_default_request=not acs_device.factory_default_request)
         else:
             return HttpResponse("Error")
 
     acs_device.refresh_from_db()
-    return HttpResponse(f"CR:{acs_device.connection_request} / FP:{acs_device.full_parameters_request} / FD:{acs_device.factory_default_request}")
 
+    return render(
+        request, "includes/acs_device_status_panel_async.html", {"acs_device": acs_device }
+    )
 
 
 class AllAcsSessions(ListView):
