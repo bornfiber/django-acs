@@ -1,0 +1,16 @@
+{% load custom_template_filters %}
+<table class="table table-bordered">
+    <tr><th colspan="2">Request status</th></tr>
+    <tr>
+        <td>Connection req.:</td>
+        <td>{{ acs_device.connection_request | truefalseicon | safe }}</td>
+    </tr>
+    <tr>
+        <td>Full parameters req.:</td>
+        <td>{{ acs_device.full_parameters_request | truefalseicon | safe }}</td>
+    </tr>
+    <tr>
+        <td>FactoryDefault req.:</td>
+        <td>{{ acs_device.factory_default_request | truefalseicon | safe }}</td>
+    </tr>
+</table>

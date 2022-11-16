@@ -67,27 +67,34 @@
                 </table>
             </div>
             <div class="col-md-3">
-                <div class="panel" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                <div class="panel panel-default">
                     <div class="panel-body">
                         {% url 'acsadmin:acs_queue_job_create' pk=acs_device.id as acs_queue_job_create_url %}
-                        <p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}</p>
+                        <p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="panel panel-default" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                    <div class="panel-body">
                         <p>
-                            <button class="btn btn-success" hx-target="#action_state" hx-post="./action/connection_request">
+                            <span class="btn btn-success" hx-target="#action_state" hx-post="./action/connection_request">
                                 Connection request
-                            </button>
-                        </p>
+                            </span>
+                        </p>    
                         <p>
-                            <button class="btn btn-warning" hx-target="#action_state" hx-post="./action/full_parameters_request">
+                            <span class="btn btn-warning" hx-target="#action_state" hx-post="./action/full_parameters_request">
                                 Get full Parameters
-                            </button>
+                            </span>
                         </p>
                         <p>
-                            <button class="btn btn-danger" hx-target="#action_state" hx-post="./action/factory_default_request">
+                            <span class="btn btn-danger" hx-target="#action_state" hx-post="./action/factory_default_request">
                                 Factory default
-                            </button>
+                            </span>
                         </p>
                         <p>
-                            <div id="action_state" hx-get="./action/get" hx-trigger="load"></div>
+                            <div id="action_state" hx-get="./action/get" hx-trigger="load, every 15s"></div>
                         </p>
                     </div>
                 </div>
