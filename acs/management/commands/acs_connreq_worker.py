@@ -18,7 +18,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         ### create AcsXmppBot instance
         xmpp = AcsXmpp(settings.ACS_XMPP_JABBERID, settings.ACS_XMPP_PASSWORD)
-        xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE)
+        xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE,use_tls=True)
         xmpp.process(block=False, timeout=1)
         while True:
             acs_device = AcsDevice.objects.filter(connection_request=True).first()

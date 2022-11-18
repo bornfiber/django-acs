@@ -60,7 +60,7 @@ def get_value_from_parameterlist(parameterlist, key):
 def run_ssh_command(server, username, private_key, command):
     try:
         private_key_file = io.StringIO(private_key)
-        private_key = paramiko.RSAKey.from_private_key(private_key_file)
+        private_key = paramiko.Ed25519Key.from_private_key(private_key_file)
         ssh = paramiko.SSHClient()
         ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
         ssh.connect(server, username=username, pkey=private_key, timeout=15)
