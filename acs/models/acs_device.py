@@ -70,6 +70,13 @@ class AcsDevice(AcsBaseModel):
         except ObjectDoesNotExist:
             return False
 
+    @property
+    def config_level_old(self):
+        if self.current_config_level == self.get_desired_config_level():
+            return False
+        else:
+            return True
+
     def handle_user_config_changes(self):
         '''
         Check self.acs_parameters for changes to settings configurable by the user
@@ -119,7 +126,7 @@ class AcsDevice(AcsBaseModel):
         return self.tag.replace("#", "")
 
     def create_xmpp_user(self):
-        if self.acs_xmpp_password:
+        if self.acs_xmpp_username and self.acs_xmpp_password:
             ### we already have an xmpp password, bail out
             return False
 

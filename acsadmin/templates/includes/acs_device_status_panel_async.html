@@ -11,6 +11,11 @@
     </tr>
 
     <tr>
+        <td>Reconfigure:</td>
+        <td><span>{{ acs_device.config_level_old | truefalseicon | safe }}</span></td>
+    </tr>
+
+    <tr>
         <td>Full parameters req.:</td>
         <td><span>{{ acs_device.full_parameters_request | truefalseicon | safe }}</span></td>
     </tr>
