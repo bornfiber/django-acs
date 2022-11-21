@@ -99,13 +99,13 @@ class AcsServerView2(View):
 
         hook_list = [
             (process_inform,"process_inform"),
+            (verify_client_ip,"verify_client_ip"),
             (factory_default,"factory_default"),
             (configure_xmpp,"configure_xmpp"),
             #(device_attributes,"device_attributes"),
             (device_firmware_upgrade,"device_firmware_upgrade"),
             (beacon_extender_test,"beacon_extender_test"),
             (preconfig,"preconfig"),
-            (verify_client_ip,"verify_client_ip"),
             (device_config,"device_config"),
             (track_parameters,"track_parameters"),
             (full_parameters_request,"full_parameters_request"),

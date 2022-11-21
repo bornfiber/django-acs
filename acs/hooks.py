@@ -1265,18 +1265,22 @@ def merge_config_template_dict(template_dict, config_dict):
     return output_dict
 
 
-def load_tracked_parameters(acs_device):
+def load_tracked_parameters(acs_device,config_version="default"):
+    # Load the YAML config, and get it as a list of dicts.
+    track_dict = load_from_yaml(acs_device,"tracked_parameters",config_version)
+
+    # Build a set for paths that should be tracked. 
     device_tracked_set = set()
-    lines = acs_device.model.tracked_parameters.splitlines()
-    for line in lines:
-        if line == "":
-            continue
-        if line.startswith("#"):
-            continue
 
-        device_tracked_set.add(line.strip())
+    # Iterate over items, and determine if it is a leaf or not. 
+    for k,v in track_dict.items():
+        if v.get('leaf',True) is True:
+            device_tracked_set.add(k)
+        else:
+            device_tracked_set.add(f"{k}.")
+    
+    return sorted(list(device_tracked_set))
 
-    return list(device_tracked_set)
 
 
 def load_from_yaml(acs_device, field_name, config_version="default"):
@@ -1293,7 +1297,7 @@ def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
         out_data = {}
     for k, v in yaml_struct.items():
         if isinstance(v, dict):
-            new_key_path = ".".join([i for i in [key_path, k] if i])
+            new_key_path = ".".join([str(i) for i in [key_path, k] if i])
             flatten_yaml_struct(v, new_key_path, out_data)
         else:
             if key_path not in out_data.keys():
