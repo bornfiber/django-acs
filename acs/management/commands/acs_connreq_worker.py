@@ -1,13 +1,16 @@
 from django.core.management.base import BaseCommand
 import logging
 import time
+import ssl
 import xml.etree.ElementTree as ET
 from acs.models import AcsDevice
+
 
 from django.conf import settings
 from sleekxmpp import ClientXMPP
 from sleekxmpp.exceptions import IqError, IqTimeout
 
+#logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("django_acs.%s" % __name__)
 
 
@@ -18,7 +21,8 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         ### create AcsXmppBot instance
         xmpp = AcsXmpp(settings.ACS_XMPP_JABBERID, settings.ACS_XMPP_PASSWORD)
-        xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE,use_tls=True)
+        xmpp.ssl_version = ssl.PROTOCOL_TLSv1_2
+        xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE)
         xmpp.process(block=False, timeout=1)
         while True:
             acs_device = AcsDevice.objects.filter(connection_request=True).first()
