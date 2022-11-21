@@ -3,6 +3,7 @@ from django.views.generic.edit import FormView, CreateView, UpdateView
 from django.shortcuts import render, get_object_or_404
 from django.http import HttpResponse
 from django.views.decorators.http import require_http_methods
+from django.utils import timezone
 
 from acs.models import *
 from .forms import AcsDeviceActionForm
@@ -141,6 +142,8 @@ def acs_device_action(request, pk, action):
             acs_device_qs.update(full_parameters_request=not acs_device.full_parameters_request)
         elif action == "factory_default_request":
             acs_device_qs.update(factory_default_request=not acs_device.factory_default_request)
+        elif action == "reconfigure":
+            acs_device_qs.update(desired_config_level=timezone.now())
         else:
             return HttpResponse("Error")
 
