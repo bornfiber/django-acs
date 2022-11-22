@@ -126,7 +126,7 @@ class AcsDevice(AcsBaseModel):
         return self.tag.replace("#", "")
 
     def create_xmpp_user(self):
-        if self.acs_xmpp_username and self.acs_xmpp_password:
+        if self.acs_xmpp_password:
             ### we already have an xmpp password, bail out
             return False
 
@@ -139,7 +139,7 @@ class AcsDevice(AcsBaseModel):
             username=settings.ACS_XMPP_SSH_USER,
             private_key=settings.ACS_XMPP_SSH_PRIVKEY,
             command='register %(user)s %(domain)s %(password)s' % {
-                'user': self.tag,
+                'user': self.acs_xmpp_username,
                 'domain': settings.ACS_XMPP_DOMAIN,
                 'password': password,
             }
