@@ -50,9 +50,9 @@ class AcsServerView2(View):
         if not acs_session.pk:
             acs_session.save()
 
-        # Limit each session to 20 acs_http_requests
-        if acs_session.acs_http_requests.count() > 20:
-            message = f"Killing {acs_session.pk}: It has more than 20 acs_http_requests, something looping ??"
+        # Limit each session to 24 acs_http_requests
+        if acs_session.acs_http_requests.count() > 24:
+            message = f"Killing {acs_session.pk}: It has more than 24 acs_http_requests, something looping ??"
             logger.warning(message)
             return HttpResponseBadRequest(message)
 
@@ -230,13 +230,21 @@ def _get_acs_session(request,AcsSession):
 
 
 def _ratelimit_acs_sessions(acs_session):
-    inform_interval = acs_settings.INFORM_INTERVAL
-    inform_limit = acs_settings.INFORM_LIMIT_PER_INTERVAL
+
+    #inform_interval = acs_settings.INFORM_INTERVAL
+    #inform_limit = acs_settings.INFORM_LIMIT_PER_INTERVAL
+
+    # Try a more loose inform limit for view2, as it is more lightweight.
+    # Idealy we should support polling at one minute intervals when someone is viewing the device in MRX
+    inform_interval = 900
+    inform_limit = 20
+
+
     # If the acs_Session has a pk, it is a pre exsisting session from the DB, allow it.
     if acs_session.pk:
         return False
 
-    # Count the number of previous ACS sessions from thios client ip, within the inform_interval.
+    # Count the number of previous ACS sessions from this client ip, within the inform_interval.
     session_count = AcsSession.objects.filter(
         client_ip=acs_session.client_ip,
         created_date__gt=timezone.now()-timedelta(seconds=inform_interval),
