@@ -1,5 +1,7 @@
 {% load custom_template_filters %}
-{% include 'includes/collapsable-panel-header.html' with name='FullParametersList' headline=headline|default:"Full ACS Parameters Last Updated: "|addstr:acs_device.acs_full_parameters_time %}
+{% with acs_device.acs_full_parameters_time|date:"Y-m-d H:i" as timestring %}
+{% include 'includes/collapsable-panel-header.html' with name='FullParametersList' headline=headline|default:"Full ACS Parameters Last Updated: "|addstr:timestring %}
+{% endwith %}
         <form class="form-inline">
           <div class="form-group">
             <label for="search">Filter:</label>
