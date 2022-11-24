@@ -51,7 +51,7 @@ class AcsDevice(AcsBaseModel):
     factory_default_request = models.BooleanField(default=False)
 
     # Request that a connection request is sent to the AcsDevice
-    connection_request = models.BooleanField(default=False)
+    connection_request = models.BooleanField(default=False,db_index=True)
 
     class Meta:
         # make sure we only ever have one device of a given model with a given serial number
