@@ -407,10 +407,28 @@ def device_attributes(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
+    if "no_config" in acs_device.hook_state.keys():
+        hook_state["hook_done"] = True
+        return None, None, hook_state
+
+    if acs_device.current_config_level == acs_device.desired_config_level:
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: current_config_level == desired_config_level, not doing attribute config."
+        )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    device_attributes_dict = load_notify_parameters(acs_device)
+
+    if not device_attributes_dict:
+        logger.info(f"{acs_session.tag}/{acs_device}: No atributes to configure.")
+        hook_state["hook_done"] = True
+        return None, None, hook_state
+
     # def cwmp_SetParameterAttributes(attribute_dict, ParameterKey, cwmp_id, acs_session):
     root, body = cwmp_SetParameterAttributes(
-        {"InternetGatewayDevice.X_ALU-COM_BeaconInfo.Beacon.": "2"},
-        "hola",
+        device_attributes_dict,
+        str(acs_device.current_config_level),
         "set:attributes",
         acs_session,
     )
@@ -425,10 +443,6 @@ def device_config(acs_http_request, hook_state):
 
     if "no_config" in acs_device.hook_state.keys():
         hook_state["hook_done"] = True
-        return None, None, hook_state
-
-    if "no_related_device" in hook_state.keys():
-        print(f"_device_config has no related_device.")
         return None, None, hook_state
 
     if not acs_session.client_ip_verified:
@@ -449,7 +463,6 @@ def device_config(acs_http_request, hook_state):
     related_device = acs_device.get_related_device()
 
     if not related_device:
-        hook_state["no_related_device"] = True
         logger.info(
             f"{acs_session.tag}: {acs_device} has no related related_device not configuring."
         )
@@ -1264,6 +1277,25 @@ def merge_config_template_dict(template_dict, config_dict):
 
     return output_dict
 
+def load_notify_parameters(acs_device,config_version="default"):
+    # Load the YAML config, and get it as a list of dicts.
+    track_dict = load_from_yaml(acs_device,"tracked_parameters",config_version)
+
+    # Build a set for paths that should have notifications.
+    device_notify_dict = {}
+
+    for k,v in track_dict.items():
+        if v.get('notify',None) is None:
+            continue
+
+        if v.get('leaf',True) is True:
+            device_notify_dict[k] = v.get('notify')
+        else:
+            device_notify_dict[f"{k}."] = v.get('notify')
+
+    return device_notify_dict
+
+
 
 def load_tracked_parameters(acs_device,config_version="default"):
     # Load the YAML config, and get it as a list of dicts.
@@ -1283,13 +1315,16 @@ def load_tracked_parameters(acs_device,config_version="default"):
 
 
 
-def load_from_yaml(acs_device, field_name, config_version="default"):
+def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
     acs_model = acs_device.model
     yaml_struct = yaml.load(getattr(acs_model, field_name))
 
     # Flatten the data
-    flattened_yaml_struct = flatten_yaml_struct(yaml_struct[config_version])
-    return flattened_yaml_struct
+    if flatten:
+        flattened_yaml_struct = flatten_yaml_struct(yaml_struct[config_version])
+        return flattened_yaml_struct
+    else:
+        return yaml_struct
 
 
 def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
