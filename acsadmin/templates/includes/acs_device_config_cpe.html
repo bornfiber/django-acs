@@ -1,0 +1,15 @@
+{% load custom_template_filters %}
+{% include 'includes/collapsable-panel-header.html' with name='cpe_config' headline=headline|default:"Raw CPE config" %}
+    <table class="table table-hover">
+        <thead>
+            <th>CPE param name</th>
+            <th>Value</th>
+        </thead>
+        {% for k,v in config.items %}
+        <tr>
+            <th>{{ k }}</th>
+            <td>{{ v }}</td>
+        </tr>
+    {% endfor %}
+    </table>
+{% include 'includes/collapsable-panel-footer.html' %}
