@@ -25,8 +25,8 @@ class Command(BaseCommand):
         xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE)
         xmpp.process(block=False, timeout=1)
         while True:
-            acs_device = AcsDevice.objects.filter(connection_request=True).first()
-            if acs_device:
+            acs_device_list = AcsDevice.objects.filter(connection_request=True)
+            for acs_device in acs_device_list:
                 AcsDevice.objects.filter(pk=acs_device.pk).update(
                     connection_request=False
                 )
