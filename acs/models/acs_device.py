@@ -357,6 +357,11 @@ class AcsDevice(AcsBaseModel):
             try:
                 device = devicemodel.objects.get(**args)
                 setattr(device, acsmodel['acsdevice_relation_field'], self)
+
+                # Bump desired_config_level on association to make sure the configuration is up to date.
+                self.desired_config_level = timezone.now()
+                self.save()
+
                 device.save()
                 # we are done here
                 break
