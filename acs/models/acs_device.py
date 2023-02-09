@@ -145,7 +145,7 @@ class AcsDevice(AcsBaseModel):
             }
         )
 
-        if True or result['result'] and result['exit_status'] == 0:
+        if result['result'] and result['exit_status'] == 0:
             self.acs_xmpp_password = password
             self.save()
             return True
