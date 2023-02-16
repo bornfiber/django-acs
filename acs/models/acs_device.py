@@ -328,7 +328,6 @@ class AcsDevice(AcsBaseModel):
                 # no match in this model, try the next
                 pass
 
-
     @property
     def latest_client_ip(self):
         """Return the client ip address of the latest acs session for this acs device (if any)"""
