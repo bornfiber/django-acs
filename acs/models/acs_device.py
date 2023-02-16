@@ -291,17 +291,26 @@ class AcsDevice(AcsBaseModel):
             logger.error("unable to make a connectionrequest without url or credentials")
             return False
 
+        if self.model.acs_connectionrequest_digest_auth:
+            auth = requests.auth.HTTPDigestAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password)
+        else:
+            auth = requests.auth.HTTPBasicAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password)
+
         ### do the request
         try:
-            if self.model.acs_connectionrequest_digest_auth:
-                return requests.get(url, auth=requests.auth.HTTPDigestAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
-            else:
-                return requests.get(url, auth=requests.auth.HTTPBasicAuth(self.acs_connectionrequest_username, self.acs_connectionrequest_password))
+            r = requests.get(url, auth=auth,timeout=3)
+            if r.status_code == 200:
+                return True
         except requests.exceptions.ConnectionError as E:
             ### catching this exception is neccesary because requests does not catch the exception which httplib returns,
             ### because our HTTP servers are closing connection "too fast" without ever sending an HTTP response
             logger.exception("got exception %s while running HTTP request" % E)
             return False
+        except requests.exceptions.ConnectTimeout:
+            logger.exception("Connection timeout")
+            return False
+
+        return False
 
     @property
     def nonautomatic_acs_queue_jobs(self):

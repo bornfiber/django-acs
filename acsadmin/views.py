@@ -138,6 +138,10 @@ def acs_device_action(request, pk, action):
     if request.method == "POST":
         if action == "connection_request":
             acs_device_qs.update(connection_request=True)
+        elif action ==  "http_connection_request":
+            result = acs_device.acs_http_connection_request()
+            if result: return HttpResponse("OK")
+            return HttpResponse("Failed")
         elif action == "full_parameters_request":
             acs_device_qs.update(full_parameters_request=not acs_device.full_parameters_request)
         elif action == "factory_default_request":
