@@ -147,7 +147,10 @@ def acs_device_action(request, pk, action):
         elif action == "factory_default_request":
             acs_device_qs.update(factory_default_request=not acs_device.factory_default_request)
         elif action == "reconfigure":
-            acs_device_qs.update(desired_config_level=timezone.now())
+            if acs_device_qs.get().current_config_level == acs_device_qs.get().desired_config_level:
+                acs_device_qs.update(desired_config_level=timezone.now())
+            else:
+                acs_device_qs.update(desired_config_level=acs_device_qs.get().current_config_level)
         else:
             return HttpResponse("Error")
 
