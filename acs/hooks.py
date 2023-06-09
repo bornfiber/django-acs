@@ -752,7 +752,7 @@ def device_firmware_upgrade(acs_http_request, hook_state):
         != acs_device.get_desired_software_version()
     ):
 
-        # Don't download if the device jst reporter transfer complete.
+        # Don't download if the device just reported transfer complete.
         if "7 TRANSFER COMPLETE" in acs_session.inform_eventcodes:
             logger.info(
                 f'{acs_session.tag}/{acs_device}: Suppessing firmware update, as this session has INFORM code "7 TRANSFER COMPLETE" '
