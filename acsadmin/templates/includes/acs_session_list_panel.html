@@ -14,12 +14,13 @@
             {% if is_paginated %}
                 {% include 'includes/pagination-footer.html' %}
             {% endif %}
-            <table class="table">
+            <table class="table table-condensed">
                 <thead>
                     <tr>
                         <th>ACS Session</th>
                         <th>ACS Device</th>
                         <th>Client IP</th>
+                        <th>Access Domain</th>
                         <th class='text-center'>Client IP Verified</th>
                         <th>Inform Event Codes</th>
                         <th>HTTP Request</th>
@@ -41,6 +42,7 @@
                         <td>{% include 'includes/small-details-button.html' with url=acs_session_detail_url %}{{ acs_session.tag }}</td>
                         <td>{% include 'includes/small-details-button.html' with url=acs_device_detail_url %}{{ acs_session.acs_device.tag }}</td>
                         <td><a href="http://{{ acs_session.client_ip }}/" target="_blank">{{ acs_session.client_ip }}</a></td>
+                        <td>{{ acs_session.access_domain }}</td>
                         <td class='text-center'>{{ acs_session.client_ip_verified|truefalseicon|safe }}</td>
                         <td>{% for iec in acs_session.inform_eventcodes %}{{ iec }}<br>{% endfor %}</td>
                         <td><span class="badge">{{ acs_session.acs_http_requests.count }}</span></td>

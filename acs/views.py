@@ -46,8 +46,10 @@ class AcsServerView2(View):
             logger.info(f"Discarding request without body because it has no session. (ip: {acs_session.client_ip})")
             return HttpResponseBadRequest()
 
-        # If the acs_Session is in memory only, we save it now.
-        if not acs_session.pk:
+        # If the acs_Session is in memory only (this is a new acs session), we save it now.
+        if acs_session.pk is None:
+            # set the access_domain, for new sessions.
+            acs_session.access_domain = kwargs.get('access_domain',None)
             acs_session.save()
 
         # Limit each session to 24 acs_http_requests
@@ -67,7 +69,7 @@ class AcsServerView2(View):
                 logger.warning(message)
                 return HttpResponseBadRequest(message)
 
-            # Validate XML namespce
+            # Validate XML namespace
             xml_ns = _get_xml_ns(request_xml,acs_session)
             if xml_ns:
                 acs_session.cwmp_namespace = xml_ns

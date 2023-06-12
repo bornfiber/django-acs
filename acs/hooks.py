@@ -816,15 +816,19 @@ def verify_client_ip(acs_http_request, hook_state):
         # If the client IP is already verified do nothing.
         return None, None, hook_state
 
-    # set acs_session.client_ip_verified based on the outcome of verify_acs_client_ip(acs_session.client_ip)
-    acs_session.client_ip_verified = (
-        acs_session.acs_device.get_related_device().verify_acs_client_ip(
-            acs_session.client_ip
+    if acs_session.access_domain == "wifi":
+        pass
+    else:
+        # set acs_session.client_ip_verified based on the outcome of verify_acs_client_ip(acs_session.client_ip)
+        acs_session.client_ip_verified = (
+            acs_session.acs_device.get_related_device().verify_acs_client_ip(
+                acs_session.client_ip
+            )
         )
-    )
-    logger.info(
-        f"{acs_session}: client_ip_verified set to {acs_session.client_ip_verified} for client (ip: {acs_session.client_ip})"
-    )
+        logger.info(
+            f"{acs_session}: client_ip_verified set to {acs_session.client_ip_verified} for client (ip: {acs_session.client_ip})"
+        )
+
     acs_session.save()
 
     hook_state["hook_done"] = str(timezone.datetime.now())
@@ -915,7 +919,7 @@ def factory_default(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
-    if acs_device.factory_default_request is not True:
+    if acs_device.factory_default_request is False:
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 

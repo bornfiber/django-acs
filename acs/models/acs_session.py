@@ -39,6 +39,7 @@ class AcsSession(AcsBaseModel):
     cwmp_namespace = models.CharField(max_length=100, default='', blank=True)
     root_data_model = models.ForeignKey('acs.CwmpDataModel', null=True, blank=True, related_name='acs_sessions', on_delete=models.PROTECT)
     hook_state = JSONField(null=True, blank=True)
+    access_domain = models.CharField(max_length=100, null=True, blank=True)
 
     class Meta:
         ordering = ['-created_date']
