@@ -1,4 +1,5 @@
 import io, paramiko, re
+import ipware
 
 from django.apps import apps
 
@@ -90,3 +91,13 @@ def get_datamodel_from_devicesummary(summary):
     else:
         return False
 
+
+
+
+def get_client_ip(*args, **kwargs):
+    if int(ipware.__version__.split(".")[0]) >= 3:
+        ip, _ = ipware.ip.get_client_ip(*args, **kwargs)
+        return ip
+    else:
+        ip = ipware.ip.get_ip(*args, **kwargs)
+        return ip

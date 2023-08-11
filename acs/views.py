@@ -1,6 +1,5 @@
 import json, logging, uuid
 from lxml import etree
-from ipware.ip import get_ip
 from defusedxml.lxml import fromstring
 from datetime import timedelta
 
@@ -15,7 +14,7 @@ from django.db.models import F
 
 
 from .models import *
-from .utils import get_value_from_parameterlist, create_xml_document
+from .utils import get_value_from_parameterlist, create_xml_document, get_client_ip
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
 from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default
@@ -211,7 +210,7 @@ def _get_xml_ns(request_xml,acs_session):
         return request_xml.nsmap['cwmp']
 
 def _get_acs_session(request,AcsSession):
-    ip = get_ip(request)
+    ip = get_client_ip(request)
     # Do we have an acs_session_id cookie ?
     if 'acs_session_id' in request.COOKIES:
         hexid = request.COOKIES['acs_session_id']
@@ -307,7 +306,7 @@ class AcsServerView(View):
 
     def post(self, request, *args, **kwargs):
         ### get the client IP from the request
-        ip = get_ip(request)
+        ip = get_client_ip(request)
         informinterval = acs_settings.INFORM_INTERVAL
 
         ### check if we have an acs session id in a cookie
