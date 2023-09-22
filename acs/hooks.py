@@ -282,7 +282,7 @@ def configure_xmpp(acs_http_request, hook_state):
 
     # Get config from related device.
     device_config = get_device_config_dict(acs_device)
-    # Get the confi template
+    # Get the config template
     yaml_struct = load_from_yaml(acs_device, "xmpp_template")
 
     # Generate the final config_dict, by merging the yaml_struct template with the device_config
@@ -1322,6 +1322,10 @@ def load_tracked_parameters(acs_device,config_version="default"):
 def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
     acs_model = acs_device.model
     yaml_struct = yaml.load(getattr(acs_model, field_name))
+
+    # If we dod not load anything from the AcsDeviceModel config field, we return an empty dict.
+    if yaml_struct is None:
+        return {}
 
     # Flatten the data
     if flatten:
