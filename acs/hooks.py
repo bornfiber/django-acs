@@ -92,12 +92,9 @@ def process_inform(acs_http_request, hook_state):
     mandatory_inform_fields = ["SerialNumber", "Manufacturer", "ProductClass", "OUI"]
     for inform_field in mandatory_inform_fields:
         field_value = deviceid.find(inform_field)
-        print(f'Testing field {inform_field} it is "{field_value.text}"')
+        # logger.info(f"{acs_session}: Testing field {inform_field} it is \"{field_value.text}\"")
         if field_value is None or field_value.text == "":
-            message = (
-                f"{acs_session}: Invalid Inform, {inform_field} missing from request."
-            )
-            logger.info(message)
+            logger.info(f"{acs_session}: Invalid Inform, {inform_field} missing from request. Killing session.")
             return False, None, hook_state
 
     # find or create acs devicevendor (using Manufacturer and OUI)
@@ -263,14 +260,12 @@ def configure_xmpp(acs_http_request, hook_state):
         if acs_http_request.cwmp_id == hook_state["addobject"]["pending_cwmp_id"]:
             key = hook_state["addobject"]["key"]
             wanted_instance = hook_state["addobject"]["wanted_index"]
-            logger.info(
-                f"{acs_session.tag}/{acs_device}: Got AddObjectResponse to process."
-            )
+            logger.info(f"{acs_session.tag}/{acs_device}: Got AddObjectResponse to process.")
 
             instance_number = acs_http_request.soap_body.find(".//InstanceNumber").text
-            print(f"Added instance:{key}{instance_number}, calling GetParameterNames")
+            logger.info(f"Added instance:{key}{instance_number}, calling GetParameterNames")
             if int(instance_number) > int(wanted_instance):
-                print("Killing session, instance overrun.")
+                logger.info(f"{acs_session.tag}/{acs_device}: Killing session, instance overrun.")
                 return None, None, hook_state
 
             # Rescan
@@ -488,9 +483,9 @@ def device_config(acs_http_request, hook_state):
             logger.info(f"{acs_session.tag}: Got AddObjectResponse to process.")
 
             instance_number = acs_http_request.soap_body.find(".//InstanceNumber").text
-            print(f"Added instance:{key}{instance_number}, calling GetParameterNames")
+            logger.info(f"{acs_session.tag}/{acs_device}: Added instance:{key}{instance_number}, calling GetParameterNames")
             if int(instance_number) > int(wanted_instance):
-                print("Killing session, instance overrun.")
+                logger.info(f"{acs_session.tag}/{acs_device}: Killing session, instance overrun.")
                 return None, None, hook_state
 
             # Rescan
