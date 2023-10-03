@@ -733,6 +733,9 @@ def device_firmware_upgrade(acs_http_request, hook_state):
                         f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse."
                     )
                     hook_state["download_ok"] = str(timezone.datetime.now())
+
+                    # End the ACS session on OK DownloadResponse. We assume that the device will reconnect after the firmware update.
+                    return "*END*", None, hook_state
                 else:
                     logger.info(
                         f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse."
