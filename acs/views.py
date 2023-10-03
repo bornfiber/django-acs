@@ -325,7 +325,7 @@ class AcsServerView(View):
 
                 if sessions_since_informinterval > acs_settings.INFORM_LIMIT_PER_INTERVAL:
                     message = "acs session DENIED: the IP %s already has %s sessions the last %s seconds, no thanks (limit is %s)" % (ip, sessions_since_informinterval, informinterval, acs_settings.INFORM_LIMIT_PER_INTERVAL)
-                    print(message)
+                    logger.info(message)
                     return HttpResponse(status=420)
 
                 acs_session = AcsSession.objects.create(
@@ -342,7 +342,7 @@ class AcsServerView(View):
 
             if sessions_since_informinterval > acs_settings.INFORM_LIMIT_PER_INTERVAL:
                 message = "acs session DENIED: the IP %s already has %s sessions the last %s seconds, no thanks (limit is %s)" % (ip, sessions_since_informinterval, informinterval, acs_settings.INFORM_LIMIT_PER_INTERVAL)
-                print(message)
+                logger.info(message)
                 return HttpResponse(status=420)
 
             acs_session = AcsSession.objects.create(
@@ -779,7 +779,7 @@ class AcsServerView(View):
                     empty_response=True
 
                 ### we are done processing the clients response, do we have anything else?
-                print(f"Pulling next response from the queue, empty_response={empty_response}")
+                logger.info(f"Pulling next response from the queue, empty_response={empty_response}")
                 response = acs_http_request.get_response(empty_response=empty_response)
             else:
                 '''
