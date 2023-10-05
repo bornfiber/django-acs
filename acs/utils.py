@@ -95,9 +95,11 @@ def get_datamodel_from_devicesummary(summary):
 
 
 def get_client_ip(*args, **kwargs):
-    if hasattr(ipware, "__version__") and int(ipware.__version__.split(".")[0]) < 3:
-        ip = ipware.ip.get_ip(*args, **kwargs)
-        return ip
-    else:
-        ip, _ = ipware.ip.get_client_ip(*args, **kwargs)
-        return ip
+    # if hasattr(ipware, "__version__") and int(ipware.__version__.split(".")[0]) < 3:
+    #     ip = ipware.ip.get_ip(*args, **kwargs)
+    #     return ip
+    # else:
+    #     ip, _ = ipware.ip.get_client_ip(*args, **kwargs)
+    #     return ip
+    ip, _ = ipware.ip.get_client_ip(*args, **kwargs)
+    return ip
