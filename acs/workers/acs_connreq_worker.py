@@ -6,8 +6,8 @@ from acs.models import AcsDevice
 
 
 from django.conf import settings
-from sleekxmpp import ClientXMPP
-from sleekxmpp.exceptions import IqError, IqTimeout
+from slixmpp import ClientXMPP
+from slixmpp.exceptions import IqError, IqTimeout
 
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("django_acs.%s" % __name__)
