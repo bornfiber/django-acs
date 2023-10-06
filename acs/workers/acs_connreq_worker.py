@@ -22,7 +22,7 @@ def do_work():
     xmpp = AcsXmpp(settings.ACS_XMPP_JABBERID, settings.ACS_XMPP_PASSWORD)
     xmpp.ssl_version = ssl.PROTOCOL_TLSv1_2
     xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE)
-    xmpp.process(block=False, timeout=1)
+    xmpp.process(timeout=1)
     while True:
         acs_device_list = AcsDevice.objects.filter(connection_request=True)
         for acs_device in acs_device_list:
