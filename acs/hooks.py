@@ -1319,7 +1319,7 @@ def load_tracked_parameters(acs_device,config_version="default"):
 
 def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
     acs_model = acs_device.model
-    yaml_struct = yaml.load(getattr(acs_model, field_name))
+    yaml_struct = yaml.safe_load(getattr(acs_model, field_name))
 
     # If we dod not load anything from the AcsDeviceModel config field, we return an empty dict.
     if yaml_struct is None:
