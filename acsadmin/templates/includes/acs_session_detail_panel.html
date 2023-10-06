@@ -1,7 +1,7 @@
 {% load custom_template_filters %}
-<div class="panel panel-info">
-    <div class="panel-heading"><h4>{{ headline|default:"ACS Session Details for "|addstr:acs_session.tag }}</h4></div>
-    <div class="panel-body">
+<div class="card panel-info">
+    <div class="card-header"><h4>{{ headline|default:"ACS Session Details for "|addstr:acs_session.tag }}</h4></div>
+    <div class="card-body">
         <div class="row">
             <div class="col-md-9">
                 {% url 'acsadmin:acs_session_detail' pk=acs_session.id as acs_session_detail_url %}

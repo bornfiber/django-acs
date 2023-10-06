@@ -1,7 +1,7 @@
 {% load custom_template_filters %}
-<div class="panel panel-info">
-    <div class="panel-heading"><h4>{{ headline|default:"ACS Device Details for "|addstr:acs_device.tag }}</h4></div>
-    <div class="panel-body">
+<div class="card card-info">
+    <div class="card-header"><h4>{{ headline|default:"ACS Device Details for "|addstr:acs_device.tag }}</h4></div>
+    <div class="card-body">
         <div class="row">
             <div class="col-md-9">
                 {% url 'acsadmin:acs_device_detail' pk=acs_device.id as acs_device_detail_url %}
@@ -67,8 +67,8 @@
                 </table>
             </div>
             <div class="col-md-3">
-                <div class="panel panel-default">
-                    <div class="panel-body">
+                <div class="card card-default">
+                    <div class="card-body">
                         {% url 'acsadmin:acs_queue_job_create' pk=acs_device.id as acs_queue_job_create_url %}
                         <p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}
                         </p>
@@ -89,8 +89,8 @@
                 }
             </style>
             <div class="col-md-3">
-                <div class="panel panel-default" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-                    <div class="panel-body">
+                <div class="card card-default" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
+                    <div class="card-body">
                         <p>
                             <span class="btn btn-success" hx-target="#action_state" hx-post="./action/connection_request">
                                 Connection request

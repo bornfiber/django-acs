@@ -1,7 +1,7 @@
 {% load custom_template_filters %}
-<div class="panel panel-info">
-    <div class="panel-heading"><h4>{{ headline|default:"ACS Device Category Details for "|addstr:acs_device_category.tag }}</h4></div>
-    <div class="panel-body">
+<div class="card card-info">
+    <div class="card-header"><h4>{{ headline|default:"ACS Device Category Details for "|addstr:acs_device_category.tag }}</h4></div>
+    <div class="card-body">
         <div class="row">
             <div class="col-md-9">
                 {% url 'acsadmin:acs_device_category_detail' pk=acs_device_category.id as acs_device_category_detail_url %}
