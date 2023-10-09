@@ -81,6 +81,7 @@ def run_ssh_command(server, username, private_key, command):
         'exit_status': exit_status,
     }
 
+
 def get_datamodel_from_devicesummary(summary):
     """
     Regex to return "Device:1.0" from "Device:1.0[](Baseline:1), ABCService:1.0[1](Baseline:1), XYZService:1.0[1](Baseline:1)"
@@ -90,8 +91,6 @@ def get_datamodel_from_devicesummary(summary):
         return match.group(1)
     else:
         return False
-
-
 
 
 def get_client_ip(*args, **kwargs):

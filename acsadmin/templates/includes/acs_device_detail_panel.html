@@ -72,25 +72,6 @@
                         {% url 'acsadmin:acs_queue_job_create' pk=acs_device.id as acs_queue_job_create_url %}
                         <p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}
                         </p>
-                    </div>
-                </div>
-            </div>
-            <style>
-                .blink-me {
-                    animation: blinker 1s linear;
-                }
-                @keyframes blinker {
-                    0% {
-                        opacity: 0.2;
-                    }
-                    100% {
-                        opacity: 1;
-                    }
-                }
-            </style>
-            <div class="col-md-3">
-                <div class="card card-default" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
-                    <div class="card-body">
                         <p>
                             <span class="btn btn-success" hx-target="#action_state" hx-post="./action/connection_request">
                                 Connection request
@@ -123,6 +104,19 @@
                     </div>
                 </div>
             </div>
+            <style>
+                .blink-me {
+                    animation: blinker 1s linear;
+                }
+                @keyframes blinker {
+                    0% {
+                        opacity: 0.2;
+                    }
+                    100% {
+                        opacity: 1;
+                    }
+                }
+            </style>
         </div>
     </div>
 </div>
