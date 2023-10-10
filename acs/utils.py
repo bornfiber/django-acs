@@ -100,5 +100,5 @@ def get_client_ip(*args, **kwargs):
     # else:
     #     ip, _ = ipware.ip.get_client_ip(*args, **kwargs)
     #     return ip
-    ip, _ = ipware.ip.get_client_ip(*args, request_header_order=['X_FORWARDED_FOR', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'])
+    ip, _ = ipware.ip.get_client_ip(*args, request_header_order=['REMOTE_ADDR','X_FORWARDED_FOR', 'HTTP_X_FORWARDED_FOR'])
     return ip
