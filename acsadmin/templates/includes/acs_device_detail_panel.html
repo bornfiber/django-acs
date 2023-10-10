@@ -68,7 +68,7 @@
             </div>
             <div class="col-md-3">
                 <div class="card card-default">
-                    <div class="card-body">
+                    <div class="card-body" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
                         {% url 'acsadmin:acs_queue_job_create' pk=acs_device.id as acs_queue_job_create_url %}
                         <p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}
                         </p>
