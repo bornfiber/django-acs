@@ -13,7 +13,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.apps import apps
 from django.core.exceptions import ObjectDoesNotExist
-from django.contrib.postgres.fields import JSONField
 
 from acs.response import get_soap_xml_object
 from acs.utils import run_ssh_command, get_value_from_parameterlist
@@ -38,10 +37,10 @@ class AcsDevice(AcsBaseModel):
     imported = models.BooleanField(default=False)
     acs_connectionrequest_url = models.CharField(max_length=100, blank=True)
     acs_connectionrequest_password = models.CharField(max_length=50, blank=True)
-    hook_state = JSONField(blank=True,null=True)
+    hook_state = models.JSONField(blank=True,null=True)
 
     # Dedicated storage for on-demand full data retreivals
-    acs_full_parameters = JSONField(blank=True,null=True)
+    acs_full_parameters = models.JSONField(blank=True,null=True)
     acs_full_parameters_time = models.DateTimeField(null=True, blank=True)
 
     # Request full retreival in the next session.

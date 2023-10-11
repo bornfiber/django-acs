@@ -1,6 +1,5 @@
 from acs.models import AcsBaseModel
 from django.urls import reverse
-from django.contrib.postgres.fields import JSONField
 from django.conf import settings
 from django.db import models
 from acs.default_acs_parametermap import default_acs_device_parametermap
@@ -11,7 +10,7 @@ class AcsDeviceModel(AcsBaseModel):
     name = models.CharField(max_length=50)
     desired_config_level = models.DateTimeField(null=True, blank=True)
     desired_software_version = models.CharField(max_length=50, blank=True)
-    acs_parameter_map_overrides = JSONField(null=True, blank=True)
+    acs_parameter_map_overrides = models.JSONField(null=True, blank=True)
     acs_connectionrequest_digest_auth = models.BooleanField(default=False)
     xmpp_template = models.TextField(blank=True, default="")
     preconfig_template = models.TextField(blank=True, default="")
