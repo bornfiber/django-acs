@@ -31,8 +31,8 @@ class AcsXmpp(ClientXMPP):
 
     def connreq_iq(self, to_jid, username, password):
         iq = self.make_iq_get(
-            ito="AcsDevice7299@acsxmpp.bornfiber.dk/acstalk",
-            ifrom="mrx@acsxmpp.bornfiber.dk/acstalk"
+            ito=to_jid,
+            ifrom=settings.ACS_XMPP_JABBERID,
         )
         iq.appendxml(make_connreq_xml(username, password))
         return self.loop.run_until_complete(iq.send(timeout=3))
