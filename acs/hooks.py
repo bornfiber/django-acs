@@ -12,6 +12,7 @@ from django.conf import settings
 # Django model deps
 from django.db.models import F
 from .models import AcsDeviceVendor, AcsDeviceModel, AcsDevice, CwmpDataModel
+from django.core.exceptions import ObjectDoesNotExist
 
 from .utils import get_value_from_parameterlist
 from .response import nse, get_soap_envelope
@@ -115,10 +116,24 @@ def process_inform(acs_http_request, hook_state):
         },
     )
 
-    # find or create acs device (using serial number and acs devicetype)
-    acs_device, created = AcsDevice.objects.get_or_create(
-        model=acs_devicemodel, serial=deviceid.find("SerialNumber").text
-    )
+    # Try to find our ACS device, as a perfect match
+    try:
+        acs_device = AcsDevice.objects.get(model=acs_devicemodel, serial=deviceid.find("SerialNumber").text)
+        logger.info(f"{acs_session}: matched to {acs_device}")
+    except ObjectDoesNotExist:
+        # If we do not have an AcsDevice, try to match without OUI and update mode accordingly, instead of creating.
+        acs_device, created = AcsDevice.objects.update_or_create(
+            serial=str(deviceid.find("SerialNumber").text),
+            model__name=str(deviceid.find("ProductClass").text),
+            model__vendor__name=str(deviceid.find("Manufacturer").text),
+            defaults={
+                "model": acs_devicemodel,
+            }
+        )
+        if created:
+            logger.info(f"{acs_session}: created{acs_device}")
+        else:
+            logger.info(f"{acs_session}: Updated {acs_device} devicemodel to {acs_devicemodel}.")
 
     # set latest session result to False and increase inform count
     acs_device.acs_latest_session_result = False

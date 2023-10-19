@@ -25,7 +25,7 @@ class AcsSession(AcsBaseModel):
         is linked to the ACS session. The reference field can be used to record
         freehand info about the session."""
 
-    acs_device = models.ForeignKey('acs.AcsDevice', null=True, blank=True, related_name='acs_sessions', on_delete=models.PROTECT)
+    acs_device = models.ForeignKey('acs.AcsDevice', null=True, blank=True, related_name='acs_sessions', on_delete=models.CASCADE)
     acs_session_id = models.UUIDField(default=uuid.uuid4)
     client_ip = models.GenericIPAddressField()
     client_ip_verified = models.BooleanField(default=False)

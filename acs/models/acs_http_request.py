@@ -15,7 +15,7 @@ class AcsHttpRequest(AcsHttpBaseModel):
     """ Every HTTP request received on the ACS server URL is saved as an instance
         of this model. """
 
-    acs_session = models.ForeignKey('acs.AcsSession', related_name='acs_http_requests', on_delete=models.PROTECT)
+    acs_session = models.ForeignKey('acs.AcsSession', related_name='acs_http_requests', on_delete=models.CASCADE)
     rpc_response_to = models.ForeignKey('acs.AcsHttpResponse', related_name='rpc_responses', null=True, blank=True, on_delete=models.PROTECT) # a foreignkey to the http response containing the acs rpc request which triggered the current http request (where relevant)
     request_headers = models.TextField(blank=True)
     request_xml_valid = models.BooleanField(default=False)

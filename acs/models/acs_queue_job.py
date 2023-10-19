@@ -7,13 +7,13 @@ from defusedxml.lxml import fromstring
 
 class AcsQueueJob(AcsBaseModel):
     cwmp_rpc_object_xml = models.TextField()
-    acs_device = models.ForeignKey('acs.AcsDevice', null=True, blank=True, related_name='acs_queue_jobs', on_delete=models.PROTECT)
+    acs_device = models.ForeignKey('acs.AcsDevice', null=True, blank=True, related_name='acs_queue_jobs', on_delete=models.CASCADE)
     reason = models.CharField(max_length=200)
     automatic = models.BooleanField(default=False)
     urgent = models.BooleanField(default=False)
     notification_sent = models.BooleanField(default=False)
     processed = models.BooleanField(default=False)
-    handled_in = models.ForeignKey('acs.AcsHttpResponse', null=True, blank=True, related_name='queuejobs', on_delete=models.PROTECT)
+    handled_in = models.ForeignKey('acs.AcsHttpResponse', null=True, blank=True, related_name='queuejobs', on_delete=models.CASCADE)
 
     class Meta:
         ordering = ['-created_date']
