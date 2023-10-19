@@ -360,7 +360,8 @@ class AcsDevice(AcsBaseModel):
                 acsmodel['serial_field']: self.serial,
                 acsmodel['model_productclass_field']: self.model.name,
                 acsmodel['vendor_name_field']: self.model.vendor.name,
-                '%s__isnull' % acsmodel['acsdevice_relation_field']: True
+                # Allow re-association of acs devices, as they might change vendor OUI
+                # '%s__isnull' % acsmodel['acsdevice_relation_field']: True
             }
             try:
                 device = devicemodel.objects.get(**args)
