@@ -116,8 +116,11 @@ def process_inform(acs_http_request, hook_state):
     )
 
     # find or create acs device (using serial number and acs devicetype)
-    acs_device, created = AcsDevice.objects.get_or_create(
-        model=acs_devicemodel, serial=deviceid.find("SerialNumber").text
+    acs_device, created = AcsDevice.objects.update_or_create(
+        serial=deviceid.find("SerialNumber").text,
+        defaults={
+            "model": acs_devicemodel,
+        }
     )
 
     # set latest session result to False and increase inform count
