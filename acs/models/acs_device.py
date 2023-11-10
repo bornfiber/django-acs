@@ -308,6 +308,9 @@ class AcsDevice(AcsBaseModel):
         except requests.exceptions.ConnectTimeout:
             logger.exception("Connection timeout")
             return False
+        except requests.exceptions.ReadTimeout:
+            logger.exception("Read timeout")
+            return False
 
         return False
 
