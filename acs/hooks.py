@@ -944,16 +944,18 @@ def factory_default(acs_http_request, hook_state):
         if acs_http_request.cwmp_id == "factory_default":
             acs_device.factory_default_request = False
             acs_device.save()
-
             return "*END*", None, hook_state
 
-
+    # If the current session has eventcode "0 BOOTSTRAP", we ignore the pending FactoryReset.
+    if "0 BOOTSTRAP" in acs_session.inform_eventcodes:
+        logger.info(f"{acs_session.tag}/{acs_device}: Ignoring pending FactoryReset, device reported \"0 BOOTSTRAP\" in current session.")
+        acs_device.factory_default_request = False
+        acs_device.save()
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
     # Issue the factory default command.
     root, body = cwmp_FactoryReset_soap("factory_default", acs_session)
-
     return root, body, hook_state
 
 
