@@ -187,6 +187,12 @@ def process_inform(acs_http_request, hook_state):
     if not acs_device.get_related_device():
         acs_device.associate_with_related_device()
 
+        # If the association was a success, we request a factory reset, unless the current session has eventcode BOOTSTRAP
+        if acs_device.get_related_device() and "0 BOOTSTRAP" not in acs_session.inform_eventcodes:
+            logger.info(f"{acs_session.tag}/{acs_device}: Sending FactoryReset, CPE device just associated without reporting 0 BOOTSTRAP.")
+            acs_device.factory_default_request = True
+            acs_device.save()
+
     if not acs_device.acs_xmpp_password:
         acs_device.create_xmpp_user()
 
