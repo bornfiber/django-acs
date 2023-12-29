@@ -45,14 +45,14 @@
                         <td>{{ acs_session.access_domain }}</td>
                         <td class='text-center'>{{ acs_session.client_ip_verified|truefalseicon|safe }}</td>
                         <td>{% for iec in acs_session.inform_eventcodes %}{{ iec }}<br>{% endfor %}</td>
-                        <td><span class="badge">{{ acs_session.acs_http_requests.count }}</span></td>
-                        <td><span class="badge">{{ acs_session.acs_http_responses.count }}</span></td>
+                        <td><span class="badge bg-secondary">{{ acs_session.acs_http_requests.count }}</span></td>
+                        <td><span class="badge bg-secondary">{{ acs_session.acs_http_responses.count }}</span></td>
                         <td>{{ acs_session.start }}</td>
                         <td>{{ acs_session.duration | pretty_timedelta }}</td>
                         <td>{{ acs_session.device_uptime | datetimerange_as_pretty_delta }}</td>
                         <td>{{ acs_session.get_latest_http_tx.soap_element_ns }}</td>
-                        <td><span class="badge">{{ acs_session.bytes_in }} bytes</span></td>
-                        <td><span class="badge">{{ acs_session.bytes_out }} bytes</span></td>
+                        <td><span class="badge bg-secondary">{{ acs_session.bytes_in }}</span></td>
+                        <td><span class="badge bg-secondary">{{ acs_session.bytes_out }}</span></td>
                         <td>
                             {% include 'includes/details-button.html' with url=acs_session_detail_url %}
                         </td>
