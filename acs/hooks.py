@@ -881,12 +881,10 @@ def beacon_extender_test(acs_http_request, hook_state):
     # PROCESS RESPONSE #
     if acs_http_request.cwmp_id == "beacon_extender_test:getnames":
 
-
         if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse":
             logger.info(
                 f"{acs_session.tag}/{acs_device}: beacon_extender_test processing GetParameterValuesResponse/Fault."
             )
-            paramlist = acs_http_request.soap_body.find(".//ParameterList")
 
             value_dict = {}
             for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
@@ -894,7 +892,7 @@ def beacon_extender_test(acs_http_request, hook_state):
                 value = valuestruct.find('Value').text
                 value_dict[key] = value
 
-            if value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode",None) == "AP_Bridge":
+            if value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode", None) == "AP_Bridge":
                 # The beacon is an extender.
                 logger.info(
                     f"{acs_session.tag}/{acs_device}: beacon is an extender."
@@ -903,7 +901,7 @@ def beacon_extender_test(acs_http_request, hook_state):
                 acs_device.hook_state["no_config"] = True
                 acs_device.hook_state["no_track"] = True
                 acs_device.hook_state["beacon_extender"] = True
-            elif value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode",None) == "RGW":
+            elif value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode", None) == "RGW":
                 logger.info(
                     f"{acs_session.tag}/{acs_device}: beacon is a router."
                 )
@@ -912,7 +910,6 @@ def beacon_extender_test(acs_http_request, hook_state):
                 logger.info(
                     f"{acs_session.tag}/{acs_device}: could not determine beacon router/extender status."
                 )
-
 
         acs_device.save()
         hook_state["hook_done"] = True
@@ -951,16 +948,16 @@ def factory_default(acs_http_request, hook_state):
             return "*END*", None, hook_state
 
 
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
     # Issue the factory default command.
-    root, body = cwmp_FactoryReset_soap("factory_default",acs_session)
+    root, body = cwmp_FactoryReset_soap("factory_default", acs_session)
 
-    return root,body, hook_state
-
-
-
-""" HOOK HELPER FUNCTIONS """
+    return root, body, hook_state
 
 
+# HOOK HELPER FUNCTIONS
 def _add_pvs_type(element, key, value_type, value):
     struct = etree.SubElement(element, "ParameterValueStruct")
     nameobj = etree.SubElement(struct, "Name")
@@ -1037,7 +1034,7 @@ def cwmp_SetParameterAttributes(attribute_dict, ParameterKey, cwmp_id, acs_sessi
 
 def _cwmp_GetParameterNames_soap(key, cwmp_id, acs_session, next_level=0):
     cwmp_obj = etree.Element(nse("cwmp", "GetParameterNames"))
-    ### add the inner response elements, but without XML namespace (according to cwmp spec!)
+    # add the inner response elements, but without XML namespace (according to cwmp spec!)
 
     parampath = etree.SubElement(cwmp_obj, "ParameterPath")
     parampath.text = key
@@ -1150,7 +1147,6 @@ def get_addobject_list(config_dict, parameternames_dict):
     # Generate a set of Addobject calls if needed.
     addobject_set = set()
 
-    config_keys = list(config_dict)
     parameternames_keys = list(parameternames_dict)
 
     missing_keys = set()
@@ -1281,7 +1277,7 @@ def merge_config_template_dict(template_dict, config_dict):
     for template_key, template_values_dict in template_dict.items():
         # If we don't have a type definition, skip the template key.
         # logger.info(f"Merging {template_key}")
-        if not "type" in template_values_dict.keys():
+        if "type" not in template_values_dict.keys():
             continue
         # If we have a acs_config definition, try to assign from config_dict
         if "acs_config" in template_values_dict.keys():
@@ -1300,18 +1296,19 @@ def merge_config_template_dict(template_dict, config_dict):
 
     return output_dict
 
-def load_notify_parameters(acs_device,config_version="default"):
+
+def load_notify_parameters(acs_device, config_version="default"):
     # Load the YAML config, and get it as a list of dicts.
-    track_dict = load_from_yaml(acs_device,"tracked_parameters",config_version)
+    track_dict = load_from_yaml(acs_device, "tracked_parameters", config_version)
 
     # Build a set for paths that should have notifications.
     device_notify_dict = {}
 
-    for k,v in track_dict.items():
-        if v.get('notify',None) is None:
+    for k, v in track_dict.items():
+        if v.get('notify', None) is None:
             continue
 
-        if v.get('leaf',True) is True:
+        if v.get('leaf', True) is True:
             device_notify_dict[k] = v.get('notify')
         else:
             device_notify_dict[f"{k}."] = v.get('notify')
@@ -1319,23 +1316,21 @@ def load_notify_parameters(acs_device,config_version="default"):
     return device_notify_dict
 
 
-
-def load_tracked_parameters(acs_device,config_version="default"):
+def load_tracked_parameters(acs_device, config_version="default"):
     # Load the YAML config, and get it as a list of dicts.
-    track_dict = load_from_yaml(acs_device,"tracked_parameters",config_version)
+    track_dict = load_from_yaml(acs_device, "tracked_parameters", config_version)
 
     # Build a set for paths that should be tracked. 
     device_tracked_set = set()
 
     # Iterate over items, and determine if it is a leaf or not. 
-    for k,v in track_dict.items():
-        if v.get('leaf',True) is True:
+    for k, v in track_dict.items():
+        if v.get('leaf', True) is True:
             device_tracked_set.add(k)
         else:
             device_tracked_set.add(f"{k}.")
     
     return sorted(list(device_tracked_set))
-
 
 
 def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
