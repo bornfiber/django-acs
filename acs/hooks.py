@@ -1174,7 +1174,7 @@ def get_addobject_list(config_dict, parameternames_dict):
             # print(f"Testing: {shortened_config_key}")
             # If any item in paramternames_keys matches, continue to the next longer shortened_config_key
             if any(
-                [key.startswith(shortened_config_key) for key in parameternames_keys]
+                [key.startswith(shortened_config_key) for key in parameternames_keys if key]
             ):
                 # print(f"Found {shortened_config_key}")
                 continue
