@@ -299,7 +299,7 @@ def configure_xmpp(acs_http_request, hook_state):
     # Get config from related device.
     device_config = get_device_config_dict(acs_device)
     # Get the config template
-    yaml_struct = load_from_yaml(acs_device, "xmpp_template")
+    yaml_struct = load_from_yaml(acs_device, "xmpp_template", config_version=device_config.get("django_acs.acs_config_name"))
 
     # Generate the final config_dict, by merging the yaml_struct template with the device_config
     config_dict = merge_config_template_dict(yaml_struct, device_config)
@@ -394,7 +394,7 @@ def track_parameters(acs_http_request, hook_state):
             return None, None, hook_state
 
     if "tracked_parameters" not in hook_state.keys():
-        tracked_parameters = load_tracked_parameters(acs_device)
+        tracked_parameters = load_tracked_parameters(acs_device,config_version=get_device_config_dict(acs_device).get("django_acs.acs_config_name"))
         cwmp_id = uuid.uuid4().hex
         # logger.info(f'{acs_session.tag}: tracked_parameters: "{tracked_parameters}"')
         hook_state["tracked_parameters"] = tracked_parameters
@@ -434,7 +434,7 @@ def device_attributes(acs_http_request, hook_state):
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
-    device_attributes_dict = load_notify_parameters(acs_device)
+    device_attributes_dict = load_notify_parameters(acs_device, config_version=get_device_config_dict(acs_device).get("django_acs.acs_config_name"))
 
     if not device_attributes_dict:
         logger.info(f"{acs_session.tag}/{acs_device}: No atributes to configure.")
@@ -532,7 +532,7 @@ def device_config(acs_http_request, hook_state):
     # Get config from related device.
     device_config = get_device_config_dict(acs_device)
     # Get the confi template
-    yaml_struct = load_from_yaml(acs_device, "config_template")
+    yaml_struct = load_from_yaml(acs_device, "config_template", config_version=device_config.get("django_acs.acs_config_name"))
 
     # Generate the final config_dict, by merging the yaml_struct template with the device_config
     config_dict = merge_config_template_dict(yaml_struct, device_config)
@@ -618,7 +618,7 @@ def preconfig(acs_http_request, hook_state):
     device_config = get_device_config_dict(acs_device)
 
     # Get the config template
-    yaml_struct = load_from_yaml(acs_device, "preconfig_template")
+    yaml_struct = load_from_yaml(acs_device, "preconfig_template", config_version=device_config.get("django_acs.acs_config_name"))
 
     # Generate the final config_dict, by merging the yaml_struct template with the device_config
     config_dict = merge_config_template_dict(yaml_struct, device_config)
@@ -1342,6 +1342,10 @@ def load_from_yaml(acs_device, field_name, config_version="default", flatten=Tru
     # If we dod not load anything from the AcsDeviceModel config field, we return an empty dict.
     if yaml_struct is None:
         return {}
+
+    # Try to load the requested config_version, if it is not present load the "default" version.
+    if config_version not in yaml_struct.keys():
+        config_version = "default"
 
     # Flatten the data
     if flatten:
