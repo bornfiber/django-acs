@@ -48,7 +48,7 @@ def do_work():
             AcsDevice.objects.filter(pk=acs_device.pk).update(
                 connection_request=False
             )
-            print(f"CR: {acs_device}")
+            #print(f"CR: {acs_device}")
             try:
                 result = xmpp.connreq_iq(
                     f"{acs_device.acs_connectionrequest_username}@{settings.ACS_XMPP_SERVERTUPLE[0]}/acstalk",
@@ -60,5 +60,5 @@ def do_work():
             except IqTimeout as e:
                 logger.error(f"IQ Timeout Error {e}")
 
-        print("acs_connreq_worker tick.")
+        #print("acs_connreq_worker tick.")
         sleep(10)

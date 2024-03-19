@@ -225,7 +225,7 @@ class AcsSession(AcsBaseModel):
         if "AddObject" in supported_rpc_methods:
             parameternames_to_add = self.check_paramter_exists()
             if parameternames_to_add:
-                print("We need to call AddObject")
+                #print("We need to call AddObject")
                 if not self.acs_rpc_add_object(reason=reason, objectname=parameternames_to_add[0]):
                     self.acs_log('error, unable to create acs job to AddObject:%s device parameter values for %s' % (parameternames_to_add[0].self.acs_device))
                 # Requeue collect_device_info, as we need to see the added objects.
@@ -722,9 +722,9 @@ class AcsSession(AcsBaseModel):
         # Create a list of missing paramternames that are not already in the device.
         missing_parmeternames = [k for k in device_parameterdict.keys() if k not in acs_parameterdict.keys()]
 
-        print("Missing parmeternames, that need further examination. :")
-        print('\n'.join(missing_parmeternames))
-        print("----")
+        #print("Missing parmeternames, that need further examination. :")
+        #print('\n'.join(missing_parmeternames))
+        #print("----")
 
         # Prepare a set of missing paramtername_add_list
         parametername_add_set = set()
