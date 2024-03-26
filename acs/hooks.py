@@ -578,20 +578,16 @@ def preconfig(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
     related_device = acs_device.get_related_device()
+    device_hook_state = acs_device.hook_state.get("preconfig", {})
 
     if "no_preconfig" in acs_device.hook_state.keys():
         hook_state["hook_done"] = True
         return None, None, hook_state
-
     if acs_device.hook_state.get("beacon_extender", False):
         hook_state["hook_done"] = True
         return None, None, hook_state
 
-    if related_device:
-        logger.info(
-            f"{acs_session.tag}/{acs_device}: Applying preconfig found related device {acs_device.get_related_device()}"
-        )
-    else:
+    if not related_device:
         logger.info(
             f"{acs_session.tag}/{acs_device}: Not applying preconfig, the device is not in our inventory."
         )
@@ -604,7 +600,13 @@ def preconfig(acs_http_request, hook_state):
         return None, None, hook_state
 
     # If the config_level already is up to date, we don't do anything.
-    if (
+    if ( 
+        acs_device.desired_preconfig_level 
+        and acs_device.desired_preconfig_level != parse_datetime(device_hook_state.get("preconfig_level", None))
+    ):
+        logger.info(f"{acs_session.tag}/{acs_device}: preconfig_level != desired_preconfig_level, doing preconfig.")
+        pass
+    elif (
         acs_device.current_config_level
         and acs_device.current_config_level == acs_device.desired_config_level
     ):
@@ -613,6 +615,10 @@ def preconfig(acs_http_request, hook_state):
         )
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
+
+    logger.info(
+            f"{acs_session.tag}/{acs_device}: Applying preconfig found related device {acs_device.get_related_device()}"
+    )
 
     # Get config from related device.
     device_config = get_device_config_dict(acs_device)
@@ -631,6 +637,11 @@ def preconfig(acs_http_request, hook_state):
     )
     hook_state["pending_cwmp_id"] = cwmp_id
     hook_state["set_done"] = str(timezone.now())
+
+    device_hook_state["preconfig_level"] = str(acs_device.desired_preconfig_level)
+    acs_device.hook_state["preconfig"] = device_hook_state
+    acs_device.save()
+
     return root, body, hook_state
 
 
@@ -717,6 +728,18 @@ def full_parameters_request(acs_http_request, hook_state):
     hook_state["data"]={}
 
     return None, None, hook_state
+
+
+def device_vendor_config(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    related_device = acs_device.get_related_device()
+    device_hook_state = acs_device.hook_state.get("device_firmware_upgrade", {})
+
+    if "hook_done" in hook_state.keys():
+        return None, None, hook_state
+
+    hook_state["hook_done"] = str(timezone.datetime.now())
 
 
 def device_firmware_upgrade(acs_http_request, hook_state):

@@ -26,6 +26,7 @@ class AcsDevice(AcsBaseModel):
     serial = models.CharField(max_length=100)
     current_config_level = models.DateTimeField(null=True, blank=True)
     desired_config_level = models.DateTimeField(null=True, blank=True)
+    desired_preconfig_level = models.DateTimeField(null=True, blank=True)
     current_software_version = models.CharField(max_length=50, blank=True)
     desired_software_version = models.CharField(max_length=50, blank=True)
     acs_xmpp_password = models.CharField(max_length=50, blank=True)
