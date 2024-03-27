@@ -602,7 +602,7 @@ def preconfig(acs_http_request, hook_state):
     # If the config_level already is up to date, we don't do anything.
     if ( 
         acs_device.desired_preconfig_level 
-        and acs_device.desired_preconfig_level != parse_datetime(device_hook_state.get("preconfig_level", None))
+        and acs_device.desired_preconfig_level != parse_datetime(device_hook_state.get("preconfig_level", ""))
     ):
         logger.info(f"{acs_session.tag}/{acs_device}: preconfig_level != desired_preconfig_level, doing preconfig.")
         pass
