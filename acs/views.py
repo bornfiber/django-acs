@@ -17,7 +17,7 @@ from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document, get_client_ip
 from .response import nse, get_soap_envelope,get_soap_xml_object
 from .conf import acs_settings
-from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default
+from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default, device_vendor_config
 from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip, full_parameters_request
 
 logger = logging.getLogger('django_acs.%s' % __name__)
@@ -99,17 +99,18 @@ class AcsServerView2(View):
             hook_state = {}
 
         hook_list = [
-            (process_inform,"process_inform"),
-            (verify_client_ip,"verify_client_ip"),
-            (factory_default,"factory_default"),
-            (device_firmware_upgrade,"device_firmware_upgrade"),
-            (configure_xmpp,"configure_xmpp"),
-            (beacon_extender_test,"beacon_extender_test"),
-            (preconfig,"preconfig"),
-            (device_config,"device_config"),
-            (device_attributes,"device_attributes"),
-            (track_parameters,"track_parameters"),
-            (full_parameters_request,"full_parameters_request"),
+            (process_inform, "process_inform"),
+            (verify_client_ip, "verify_client_ip"),
+            (factory_default, "factory_default"),
+            (device_firmware_upgrade, "device_firmware_upgrade"),
+            (configure_xmpp, "configure_xmpp"),
+            (beacon_extender_test, "beacon_extender_test"),
+            (device_vendor_config, "device_vendor_config"),
+            (preconfig, "preconfig"),
+            (device_config, "device_config"),
+            (device_attributes, "device_attributes"),
+            (track_parameters, "track_parameters"),
+            (full_parameters_request, "full_parameters_request"),
         ]
 
         ### CALL THE HOOKS
@@ -144,13 +145,12 @@ class AcsServerView2(View):
                 response['Set-Cookie'] = f"acs_session_id={acs_session.hexid}; Max-Age=60; Path=/"
                 # The hook returned a resonse, save it and send it.
                 acs_http_response = acs_http_request.rpc_responses.create(
-                    http_request = acs_http_request,
+                    http_request=acs_http_request,
                     fk_body=create_xml_document(xml=response.content),
                     cwmp_id=acs_http_request.cwmp_id,
-                    soap_element = response_body[0].tag
+                    soap_element=response_body[0].tag
                 )
                 return response
-
 
         # If we end up here, no hook wanted to do anything. End the session.
         logger.info("End of view !!")
@@ -159,11 +159,11 @@ class AcsServerView2(View):
         response['Set-Cookie'] = f"acs_session_id={acs_session.hexid}; Max-Age=60; Path=/"
 
         # Save the empty response
-        acs_http_response = acs_http_request.rpc_responses.create(
-            http_request = acs_http_request,
+        acs_http_request.rpc_responses.create(
+            http_request=acs_http_request,
             fk_body=create_xml_document(xml=response.content),
             cwmp_id=acs_http_request.cwmp_id,
-            soap_element = f"EmptyResponse",
+            soap_element="EmptyResponse",
         )
         # Save the acs_device, it might have been changed by a hook.
         acs_session.acs_device.save()
@@ -172,9 +172,6 @@ class AcsServerView2(View):
         acs_session.save()
 
         return response
-
-
-
 
 
 ################################################################################################################################

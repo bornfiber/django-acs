@@ -733,13 +733,47 @@ def full_parameters_request(acs_http_request, hook_state):
 def device_vendor_config(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
-    related_device = acs_device.get_related_device()
-    device_hook_state = acs_device.hook_state.get("device_firmware_upgrade", {})
+    device_hook_state = acs_device.hook_state.get("device_vendor_config", {})
 
     if "hook_done" in hook_state.keys():
         return None, None, hook_state
 
+    # Don't download vendor config files if thebeacon is an extender.
+    if acs_device.hook_state.get("beacon_extender", False):
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # Try to get the vendor config file. If there is no vendor config file, we are done.
+    filename = acs_device.model.vendor_config_file
+    if not filename:
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # Get the latest download time.
+    download_time = parse_datetime(
+        device_hook_state.get("download_command_sent_at", "")
+    )
+    # Determine if we need to download the vendor config file.
+    if download_time and "0 BOOTSTRAP" not in acs_session.inform_eventcodes:
+        logger.info(f"{acs_session.tag}/{acs_device}: Not downloading vendor config file (already downloaded).")
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # NEW DOWNLOAD RESPONSE HERE ####
+    cwmp_id = uuid.uuid4().hex
+
+    software_url = acs_device.get_vendor_config_url(filename)
+
+    root, body = cwmp_Download(software_url, cwmp_id, acs_session, filetype="3 Vendor Configuration File")
+    logger.info(f"Downloading vendor config file: {software_url}")
+    hook_state["vendor_config_cwmp_id"] = cwmp_id
+    device_hook_state["download_command_sent_at"] = str(timezone.now())
     hook_state["hook_done"] = str(timezone.datetime.now())
+    acs_device.hook_state["device_vendor_config"] = device_hook_state
+    acs_device.save()
+
+    # return None, None, hook_state
+    return root, body, hook_state
 
 
 def device_firmware_upgrade(acs_http_request, hook_state):
@@ -1153,14 +1187,17 @@ def cwmp_GetRPCMethods(acs_session):
     return root, body
 
 
-def cwmp_Download(firmware_url, cwmp_id, acs_session):
+def cwmp_Download(firmware_url, cwmp_id, acs_session, filetype="1 Firmware Upgrade Image", filesize=None):
     cwmp_obj = etree.Element(nse("cwmp", "Download"))
     root, body = get_soap_envelope(cwmp_id, acs_session)
 
     commandkey = etree.SubElement(cwmp_obj, "CommandKey")
     commandkey.text = "cwmp_Download"
-    filetype = etree.SubElement(cwmp_obj, "FileType")
-    filetype.text = "1 Firmware Upgrade Image"
+    filetype_element = etree.SubElement(cwmp_obj, "FileType")
+    filetype_element.text = filetype
+    if filesize:
+        filesize_element = etree.SubElement(cwmp_obj, "FileSize")
+        filesize_element.text = str(filesize)
     url = etree.SubElement(cwmp_obj, "URL")
     url.text = firmware_url
 

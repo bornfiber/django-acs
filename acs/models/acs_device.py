@@ -117,6 +117,9 @@ class AcsDevice(AcsBaseModel):
         '''
         return '%s/%s-%s' % (settings.ACS_DOWNLOAD_URL, self.model.tag.replace('#', '_'), version)
 
+    def get_vendor_config_url(self, filename):
+        return '%s/vendor_config/%s' % (settings.ACS_DOWNLOAD_URL, filename)
+
     @property
     def acs_xmpp_username(self):
         return self.tag.replace("#", "")

@@ -16,7 +16,7 @@ class AcsDeviceModel(AcsBaseModel):
     preconfig_template = models.TextField(blank=True, default="")
     config_template = models.TextField(blank=True, default="")
     tracked_parameters = models.TextField(blank=True, default="")
-
+    vendor_config_file = models.CharField(max_length=50, blank=True, default="")
 
     def __str__(self):
         return str("%s - %s" % (self.tag, self.name))
