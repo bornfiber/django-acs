@@ -19,6 +19,7 @@ from .response import nse, get_soap_envelope
 from .conf import acs_settings
 
 logger = logging.getLogger("django_acs.%s" % __name__)
+logger.setLevel(logging.INFO)
 
 
 def process_inform(acs_http_request, hook_state):
@@ -384,7 +385,7 @@ def track_parameters(acs_http_request, hook_state):
             logger.info(
                 f"{acs_session.tag}/{acs_device}: Processed {paramcount} paramters."
             )
-            ### alright, update the ACS device with the new information.
+            # alright, update the ACS device with the new information.
             acs_device.acs_parameters = etree.tostring(
                 root, xml_declaration=True
             ).decode("utf-8", "ignore")
@@ -394,7 +395,7 @@ def track_parameters(acs_http_request, hook_state):
             return None, None, hook_state
 
     if "tracked_parameters" not in hook_state.keys():
-        tracked_parameters = load_tracked_parameters(acs_device,config_version=get_device_config_dict(acs_device).get("django_acs.acs_config_name"))
+        tracked_parameters = load_tracked_parameters(acs_device, config_version=get_device_config_dict(acs_device).get("django_acs.acs_config_name"))
         cwmp_id = uuid.uuid4().hex
         # logger.info(f'{acs_session.tag}: tracked_parameters: "{tracked_parameters}"')
         hook_state["tracked_parameters"] = tracked_parameters
@@ -409,13 +410,12 @@ def track_parameters(acs_http_request, hook_state):
 
 def get_cpe_rpc_methods(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
-    acs_device = acs_session.acs_device
 
     if "hook_done" in hook_state.keys():
         return None, None, hook_state
 
     hook_state["hook_done"] = str(timezone.now())
-    root, body = cwmp_obj = cwmp_GetRPCMethods(acs_session)
+    root, body = cwmp_GetRPCMethods(acs_session)
     return root, body, hook_state
 
 
@@ -617,7 +617,7 @@ def preconfig(acs_http_request, hook_state):
         return None, None, hook_state
 
     logger.info(
-            f"{acs_session.tag}/{acs_device}: Applying preconfig found related device {acs_device.get_related_device()}"
+        f"{acs_session.tag}/{acs_device}: Applying preconfig found related device {acs_device.get_related_device()}"
     )
 
     # Get config from related device.
@@ -665,7 +665,8 @@ def full_parameters_request(acs_http_request, hook_state):
         for infostruct in acs_http_request.soap_body.findall('.//ParameterInfoStruct'):
             key = infostruct.find('Name').text
             writable = infostruct.find('Writable').text
-            if key not in hook_state["data"].keys(): hook_state["data"][key] = {}
+            if key not in hook_state["data"].keys():
+                hook_state["data"][key] = {}
             hook_state["data"][key]["writable"] = writable
 
     if (
@@ -676,7 +677,8 @@ def full_parameters_request(acs_http_request, hook_state):
             key = valuestruct.find('Name').text
             value = valuestruct.find('Value').text
             type = valuestruct.find('Value').attrib['{%s}type' % acs_settings.SOAP_NAMESPACES['xsi']]
-            if key not in hook_state["data"].keys(): hook_state["data"][key] = {}
+            if key not in hook_state["data"].keys():
+                hook_state["data"][key] = {}
             hook_state["data"][key]["value"] = value
             hook_state["data"][key]["type"] = type
 
@@ -687,7 +689,8 @@ def full_parameters_request(acs_http_request, hook_state):
         for attributestruct in acs_http_request.soap_body.findall('.//ParameterAttributeStruct'):
             key = attributestruct.find('Name').text
             notification = attributestruct.find('Notification').text
-            if key not in hook_state["data"].keys(): hook_state["data"][key] = {}
+            if key not in hook_state["data"].keys():
+                hook_state["data"][key] = {}
             hook_state["data"][key]["notification"] = notification
 
     # Retreive Parameter Names,Attributes,Values
@@ -725,7 +728,7 @@ def full_parameters_request(acs_http_request, hook_state):
     acs_device.full_parameters_request = False
     acs_device.save()
 
-    hook_state["data"]={}
+    hook_state["data"] = {}
 
     return None, None, hook_state
 
@@ -779,7 +782,6 @@ def device_vendor_config(acs_http_request, hook_state):
 def device_firmware_upgrade(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
-    related_device = acs_device.get_related_device()
 
     device_hook_state = acs_device.hook_state.get("device_firmware_upgrade", {})
 
@@ -855,7 +857,7 @@ def device_firmware_upgrade(acs_http_request, hook_state):
             f"{acs_session.tag}/{acs_device}: Updating firmware {acs_device.current_software_version} -> {acs_device.get_desired_software_version()}"
         )
 
-        #### NEW DOWNLOAD RESPONSE HERE ####
+        # NEW DOWNLOAD RESPONSE HERE #
         cwmp_id = uuid.uuid4().hex
 
         software_url = acs_device.get_software_url(
