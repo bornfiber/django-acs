@@ -61,7 +61,7 @@ def process_inform(acs_http_request, hook_state):
 
     elif acs_http_request.cwmp_rpc_method != "Inform":
         # If we receive anything that is not an inform, throw an error.
-        logger.info(
+        logger.warning(
             f"{acs_session}: The session must begin with an inform. Request {acs_http_request} is not an inform."
         )
         return False, None, hook_state
@@ -75,7 +75,7 @@ def process_inform(acs_http_request, hook_state):
     # Get the INFORM eventcodes
     eventcodes = get_inform_eventcodes(inform)
     if not eventcodes:
-        logger.info(
+        logger.warning(
             f"Did not receive any eventcodes. Killing session. (client ip: {acs_session.client_ip}"
         )
         return False, None, hook_state
@@ -96,7 +96,7 @@ def process_inform(acs_http_request, hook_state):
         field_value = deviceid.find(inform_field)
         # logger.info(f"{acs_session}: Testing field {inform_field} it is \"{field_value.text}\"")
         if field_value is None or field_value.text == "":
-            logger.info(f"{acs_session}: Invalid Inform, {inform_field} missing from request. Killing session.")
+            logger.warning(f"{acs_session}: Invalid Inform, {inform_field} missing from request. Killing session.")
             return False, None, hook_state
 
     # find or create acs devicevendor (using Manufacturer and OUI)
@@ -155,7 +155,7 @@ def process_inform(acs_http_request, hook_state):
         parameterlist, f"{root_object}.ManagementServer.ParameterKey"
     )
     if not parameterkey:
-        logger.info(
+        logger.warning(
             f"{acs_session.tag}/{acs_device}: Did not find parameterkey in inform."
         )
         acs_device.current_config_level = None
@@ -226,7 +226,7 @@ def configure_xmpp(acs_http_request, hook_state):
             f"{acs_session.tag}/{acs_device}: xmpp_config, configuring beacause current_config_level is None."
         )
     elif acs_device.get_desired_config_level() and acs_device.current_config_level == acs_device.get_desired_config_level():
-        logger.info(
+        logger.debug(
             f"{acs_session.tag}/{acs_device}: xmpp_config, not configuring current_config_level == desired_config_level."
         )
         hook_state["hook_done"] = str(timezone.now())
@@ -287,7 +287,7 @@ def configure_xmpp(acs_http_request, hook_state):
             instance_number = acs_http_request.soap_body.find(".//InstanceNumber").text
             logger.info(f"Added instance:{key}{instance_number}, calling GetParameterNames")
             if int(instance_number) > int(wanted_instance):
-                logger.info(f"{acs_session.tag}/{acs_device}: Killing session, instance overrun.")
+                logger.warning(f"{acs_session.tag}/{acs_device}: Killing session, instance overrun.")
                 return None, None, hook_state
 
             # Rescan
@@ -428,7 +428,7 @@ def device_attributes(acs_http_request, hook_state):
         return None, None, hook_state
 
     if acs_device.current_config_level == acs_device.desired_config_level:
-        logger.info(
+        logger.debug(
             f"{acs_session.tag}/{acs_device}: current_config_level == desired_config_level, not doing attribute config."
         )
         hook_state["hook_done"] = str(timezone.now())
@@ -437,7 +437,7 @@ def device_attributes(acs_http_request, hook_state):
     device_attributes_dict = load_notify_parameters(acs_device, config_version=get_device_config_dict(acs_device).get("django_acs.acs_config_name"))
 
     if not device_attributes_dict:
-        logger.info(f"{acs_session.tag}/{acs_device}: No atributes to configure.")
+        logger.debug(f"{acs_session.tag}/{acs_device}: No atributes to configure.")
         hook_state["hook_done"] = True
         return None, None, hook_state
 
@@ -469,7 +469,7 @@ def device_config(acs_http_request, hook_state):
         return None, None, hook_state
 
     if acs_device.current_config_level == acs_device.desired_config_level:
-        logger.info(
+        logger.debug(
             f"{acs_session.tag}/{acs_device}: current_config_level == desired_config_level, not doing config."
         )
         hook_state["hook_done"] = str(timezone.now())
@@ -506,7 +506,7 @@ def device_config(acs_http_request, hook_state):
             instance_number = acs_http_request.soap_body.find(".//InstanceNumber").text
             logger.info(f"{acs_session.tag}/{acs_device}: Added instance:{key}{instance_number}, calling GetParameterNames")
             if int(instance_number) > int(wanted_instance):
-                logger.info(f"{acs_session.tag}/{acs_device}: Killing session, instance overrun.")
+                logger.warning(f"{acs_session.tag}/{acs_device}: Killing session, instance overrun.")
                 return None, None, hook_state
 
             # Rescan
@@ -588,7 +588,7 @@ def preconfig(acs_http_request, hook_state):
         return None, None, hook_state
 
     if not related_device:
-        logger.info(
+        logger.warning(
             f"{acs_session.tag}/{acs_device}: Not applying preconfig, the device is not in our inventory."
         )
         hook_state["hook_done"] = str(timezone.now())
@@ -610,7 +610,7 @@ def preconfig(acs_http_request, hook_state):
         acs_device.current_config_level
         and acs_device.current_config_level == acs_device.desired_config_level
     ):
-        logger.info(
+        logger.debug(
             f"{acs_session.tag}/{acs_device}: current_config_level == desired_config_level, not doing preconfig."
         )
         hook_state["hook_done"] = str(timezone.now())
@@ -758,7 +758,7 @@ def device_vendor_config(acs_http_request, hook_state):
     )
     # Determine if we need to download the vendor config file.
     if download_time and "0 BOOTSTRAP" not in acs_session.inform_eventcodes:
-        logger.info(f"{acs_session.tag}/{acs_device}: Not downloading vendor config file (already downloaded).")
+        logger.debug(f"{acs_session.tag}/{acs_device}: Not downloading vendor config file (already downloaded).")
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
@@ -804,7 +804,7 @@ def device_firmware_upgrade(acs_http_request, hook_state):
             )
             status = rpc_response.find("Status")
             if status is None:
-                logger.info(
+                logger.warning(
                     f"{acs_session}: {acs_device} sent DownloadResponse without status code"
                 )
             else:
@@ -872,7 +872,7 @@ def device_firmware_upgrade(acs_http_request, hook_state):
         return root, body, hook_state
 
     # If we end here, the firmware version is OK
-    logger.info(
+    logger.debug(
         f"{acs_session}: Not updating firmware on {acs_device}, as it is the correct version."
     )
     hook_state["hook_done"] = str(timezone.datetime.now())
@@ -966,7 +966,7 @@ def beacon_extender_test(acs_http_request, hook_state):
                 )
                 acs_device.hook_state["beacon_extender"] = False
             else:
-                logger.info(
+                logger.warning(
                     f"{acs_session.tag}/{acs_device}: could not determine beacon router/extender status."
                 )
 

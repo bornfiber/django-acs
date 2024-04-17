@@ -21,7 +21,7 @@ from .hooks import process_inform, preconfig, device_attributes, device_config, 
 from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip, full_parameters_request
 
 logger = logging.getLogger('django_acs.%s' % __name__)
-
+logger.setLevel(logging.INFO)
 
 class AcsServerView2(View):
     @method_decorator(csrf_exempt)
@@ -42,7 +42,7 @@ class AcsServerView2(View):
 
         # Empty posts without a session are discarded at once.
         if not request.body and not acs_session.pk:
-            logger.info(f"Discarding request without body because it has no session. (ip: {acs_session.client_ip})")
+            logger.warning(f"Discarding request without body because it has no session. (ip: {acs_session.client_ip})")
             return HttpResponseBadRequest()
 
         # If the acs_Session is in memory only (this is a new acs session), we save it now.
@@ -153,7 +153,7 @@ class AcsServerView2(View):
                 return response
 
         # If we end up here, no hook wanted to do anything. End the session.
-        logger.info("End of view !!")
+        logger.info(f"{acs_session.tag}: End of ACS session !!")
 
         response = HttpResponse(status=204)
         response['Set-Cookie'] = f"acs_session_id={acs_session.hexid}; Max-Age=60; Path=/"
@@ -182,7 +182,7 @@ def _validate_soap(request_xml,acs_http_request):
 
     if soap_body is None:
         # a soap body is required..
-        logger.info(f"{acs_http_request.acs_session}: Unable to find SOAP body in xml posted by client (ip: {acs_http_request.acs_session.ip})")
+        logger.warning(f"{acs_http_request.acs_session}: Unable to find SOAP body in xml posted by client (ip: {acs_http_request.acs_session.ip})")
         return False
 
     if soap_header is not None:
@@ -192,7 +192,7 @@ def _validate_soap(request_xml,acs_http_request):
         acs_http_request.save()
         ### do we have exactly one soap object in this soap body?
         if len(list(soap_body)) != 1:
-            logger.info(f"{acs_http_request.acs_session}: Client sent multiple SOAP bodies (ip: {acs_http_request.acs_session.ip}")
+            logger.warning(f"{acs_http_request.acs_session}: Client sent multiple SOAP bodies (ip: {acs_http_request.acs_session.ip}")
             return False
         else:
             return soap_body
@@ -201,7 +201,7 @@ def _validate_soap(request_xml,acs_http_request):
 def _get_xml_ns(request_xml,acs_session):
     # Va:lidate that we indeed have a CMWP request that is valid, and extract the SOAP data.    else:
     if not 'cwmp' in request_xml.nsmap:
-        logger.info(f"{acs_session}, No cwmp namespace found in the soap envelope, this is not a valid CWMP request posted by client (ip: {acs_session.ip})")
+        logger.warning(f"{acs_session}, No cwmp namespace found in the soap envelope, this is not a valid CWMP request posted by client (ip: {acs_session.ip})")
         return False
     else:
         return request_xml.nsmap['cwmp']
@@ -218,10 +218,10 @@ def _get_acs_session(request,AcsSession):
             logger.info(f"Got {acs_session} cookie from client (ip: {ip}), and found a valid acs_session.")
             return acs_session
         except AcsSession.DoesNotExist:
-            logger.info(f"Invalid acs_session_id from client (ip: {ip}), creating new acs_session")
+            logger.warning(f"Invalid acs_session_id from client (ip: {ip}), creating new acs_session")
 
     else:
-        logger.info(f"Got no acs_session cookie from client (ip: {ip}), creating new acs_session")
+        logger.warning(f"Got no acs_session cookie from client (ip: {ip}), creating new acs_session")
 
     # Create a new acs_session, if no valid session found
     return AcsSession(client_ip=ip,hook_state={})
@@ -250,7 +250,7 @@ def _ratelimit_acs_sessions(acs_session):
 
     # If we have more than allowed sessions within the informinterval, reject the request.
     if session_count > inform_limit:
-        logger.info(f"acs session for client (ip: {acs_session.client_ip}) denied, seen {session_count} sessions, limit is {inform_limit}")
+        logger.warning(f"acs session for client (ip: {acs_session.client_ip}) denied, seen {session_count} sessions, limit is {inform_limit}")
         return True
 
     # Allow the session
@@ -270,7 +270,7 @@ def _parse_acs_request_xml(request,acs_session):
             xmlroot = fromstring(request.body.decode('utf-8','ignore').encode('utf-8'))
             return xmlroot
         except Exception as E:
-            logger.info(f"got exception parsing ACS XML: {E}")
+            logger.warning(f"got exception parsing ACS XML: {E}")
     return None
 
 def _save_acs_http_request(acs_session,request):
@@ -287,7 +287,7 @@ def _save_acs_http_request(acs_session,request):
         fk_body=create_xml_document(xml=request.body),
     )
 
-    logger.info(f"{acs_session}: saved {acs_http_request} to db")
+    logger.debug(f"{acs_session}: saved {acs_http_request} to db")
     return acs_http_request,request_xml,request_headerdict
 
 
