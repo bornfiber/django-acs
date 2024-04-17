@@ -120,7 +120,7 @@ class AcsServerView2(View):
             if "hook_done" in current_hook_state.keys():
                 continue
 
-            logger.info(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_key}")
+            logger.debug(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_key}")
 
             response_root,response_body,new_hook_state = hook_function(acs_http_request,current_hook_state)
 
