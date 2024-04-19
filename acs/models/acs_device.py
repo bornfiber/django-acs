@@ -307,15 +307,11 @@ class AcsDevice(AcsBaseModel):
         except requests.exceptions.ConnectionError as E:
             ### catching this exception is neccesary because requests does not catch the exception which httplib returns,
             ### because our HTTP servers are closing connection "too fast" without ever sending an HTTP response
-            logger.exception("got exception %s while running HTTP request" % E)
-            return False
+            logger.warning(f"{self.tag}: Connection error")
         except requests.exceptions.ConnectTimeout:
-            logger.exception("Connection timeout")
-            return False
+            logger.warning(f"{self.tag}: Connection timeout")
         except requests.exceptions.ReadTimeout:
-            logger.exception("Read timeout")
-            return False
-
+            logger.warning(f"{self.tag}: Read timeout")
         return False
 
     @property
