@@ -768,7 +768,7 @@ def device_vendor_config(acs_http_request, hook_state):
     software_url = acs_device.get_vendor_config_url(filename)
 
     root, body = cwmp_Download(software_url, cwmp_id, acs_session, filetype="3 Vendor Configuration File")
-    logger.info(f"Downloading vendor config file: {filename}")
+    logger.info(f"{acs_session.tag}/{acs_device}: Downloading vendor config file {filename}")
     hook_state["vendor_config_cwmp_id"] = cwmp_id
     device_hook_state["download_command_sent_at"] = str(timezone.now())
     hook_state["hook_done"] = str(timezone.datetime.now())
