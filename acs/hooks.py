@@ -95,7 +95,7 @@ def process_inform(acs_http_request, hook_state):
     for inform_field in mandatory_inform_fields:
         field_value = deviceid.find(inform_field)
         # logger.info(f"{acs_session}: Testing field {inform_field} it is \"{field_value.text}\"")
-        if field_value is None or field_value.text == "":
+        if field_value is None or field_value.text is None or field_value.text == "":
             logger.warning(f"{acs_session}: Invalid Inform, {inform_field} missing from request. Killing session.")
             return False, None, hook_state
 
