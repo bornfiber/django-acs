@@ -39,6 +39,7 @@ def process_inform(acs_http_request, hook_state):
     elif "hook_done" in hook_state.keys():
         # The inform is done.
         # Do nothing.
+        logger.info(f"{acs_session}: Inform hook is already done.")
         return None, None, hook_state
 
     elif "inform_received" in hook_state.keys() and acs_http_request.soap_body is False:
@@ -58,6 +59,21 @@ def process_inform(acs_http_request, hook_state):
         maxenv.text = "1"
         hook_state["transfer_complete"] = str(timezone.now())
         return root, body, hook_state
+
+    elif acs_http_request.cwmp_rpc_method == "GetRPCMethods":
+        logger.info(f"{acs_session}: {acs_device} sent a GetRPCMethods message.")
+
+        # Inform processed OK, prepare a response
+        root, body = get_soap_envelope(acs_http_request.cwmp_id, acs_session)
+        cwmp = etree.SubElement(body, nse("cwmp", "GetRPCMethodsResponse"))
+        # add the inner response elements, without namespace (according to cwmp spec!)
+        method_list = etree.SubElement(cwmp, "MethodList")
+        for method in ["Inform", "GetRPCMethods", "TransferComplete"]:
+            ele = etree.SubElement(method_list, "string")
+            ele.text = method
+        
+        return root, body, hook_state
+
 
     elif acs_http_request.cwmp_rpc_method != "Inform":
         # If we receive anything that is not an inform, throw an error.
@@ -215,6 +231,19 @@ def configure_xmpp(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
+    # If the device model has no xmpp config (), we are done...
+    device_config = get_device_config_dict(acs_device)
+    config_template = load_from_yaml(acs_device, "xmpp_template", config_version=device_config.get("django_acs.acs_config_name"))
+
+    root_object = acs_session.root_data_model.root_object
+
+    if not config_template:
+        logger.debug(
+            f"{acs_session.tag}/{acs_device}: xmpp_config, device has no XMPP config template, hook is done."
+        )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
     # Every device get at least a XMPP config either on boot or when config_level is out of sync or empty.
 
     if "1 BOOT" in acs_session.inform_eventcodes:
@@ -264,7 +293,7 @@ def configure_xmpp(acs_http_request, hook_state):
 
     if "get_done" not in hook_state.keys():
         root, body = _cwmp_GetParameterNames_soap(
-            "InternetGatewayDevice.XMPP.Connection.", "configure_xmpp_get", acs_session
+            f"{root_object}.XMPP.Connection.", "configure_xmpp_get", acs_session
         )
         hook_state["get_done"] = str(timezone.now())
         hook_state["pending_cwmp_id"] = "configure_xmpp_get"
@@ -272,7 +301,7 @@ def configure_xmpp(acs_http_request, hook_state):
 
     if "get2_done" not in hook_state.keys():
         root, body = _cwmp_GetParameterNames_soap(
-            "InternetGatewayDevice.ManagementServer.", "configure_xmpp_get", acs_session
+            f"{root_object}.ManagementServer.", "configure_xmpp_get", acs_session
         )
         hook_state["get2_done"] = str(timezone.now())
         hook_state["pending_cwmp_id"] = "configure_xmpp_get"
@@ -457,6 +486,17 @@ def device_config(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
+    # If the device model has no device_config (), we are done...
+    device_config = get_device_config_dict(acs_device)
+    config_template = load_from_yaml(acs_device, "config_template", config_version=device_config.get("django_acs.acs_config_name"))
+
+    if not config_template:
+        logger.debug(
+            f"{acs_session.tag}/{acs_device}: device_config, device has no device_config template, hook is done."
+        )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
     if "no_config" in acs_device.hook_state.keys():
         hook_state["hook_done"] = True
         return None, None, hook_state
@@ -574,9 +614,20 @@ def preconfig(acs_http_request, hook_state):
     # Preconfig is given to all ACS devices that have a physical device. Regardless of IP address validation.
     # Preconfig is dumb, it does not attempt to do AddObjects for missing items.
     # Preconfig does not modify the parameter_key, it is preserved as is.
-
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
+
+    # If the device model has no device_config (), we are done...
+    device_config = get_device_config_dict(acs_device)
+    config_template = load_from_yaml(acs_device, "preconfig_template", config_version=device_config.get("django_acs.acs_config_name"))
+
+    if not config_template:
+        logger.debug(
+            f"{acs_session.tag}/{acs_device}: pre_config, device has no pre_config template, hook is done."
+        )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
     related_device = acs_device.get_related_device()
     device_hook_state = acs_device.hook_state.get("preconfig", {})
 
