@@ -63,6 +63,15 @@ class AcsDevice(AcsBaseModel):
     def get_absolute_url(self):
         return reverse('acs_device_detail', kwargs={'pk': self.pk})
 
+    def get_view_acs_config(self):
+        device_config = {}
+        related_device = self.get_related_device()
+
+        device_config = related_device.get_acs_config(access_domain=self.hook_state.get("latest_access_domain", None))
+        device_config["django_acs.acs_device.latest_access_domain"] = self.hook_state.get("latest_access_domain", None)
+
+        return device_config
+
     @property
     def latest_acs_session(self):
         try:

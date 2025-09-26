@@ -3,6 +3,7 @@ import logging
 import uuid
 from lxml import etree
 import yaml
+from urllib.parse import urlparse
 
 # Dajngo deps
 from django.utils import timezone
@@ -74,7 +75,6 @@ def process_inform(acs_http_request, hook_state):
         
         return root, body, hook_state
 
-
     elif acs_http_request.cwmp_rpc_method != "Inform":
         # If we receive anything that is not an inform, throw an error.
         logger.warning(
@@ -138,7 +138,7 @@ def process_inform(acs_http_request, hook_state):
         acs_device = AcsDevice.objects.get(model=acs_devicemodel, serial=deviceid.find("SerialNumber").text)
         logger.info(f"{acs_session}: matched to {acs_device}")
     except ObjectDoesNotExist:
-        # If we do not have an AcsDevice, try to match without OUI and update mode accordingly, instead of creating.
+        # If we do not have an AcsDevice, try to match without OUI and update model accordingly, instead of creating.
         acs_device, created = AcsDevice.objects.update_or_create(
             serial=str(deviceid.find("SerialNumber").text),
             model__name=str(deviceid.find("ProductClass").text),
@@ -193,6 +193,8 @@ def process_inform(acs_http_request, hook_state):
     if acs_device.hook_state is None:
         acs_device.hook_state = {}
 
+    # Record the latest_access_domain
+    acs_device.hook_state["latest_access_domain"] = acs_session.access_domain
     # Save the acs_device
     acs_device.save()
 
@@ -617,13 +619,21 @@ def preconfig(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
 
-    # If the device model has no device_config (), we are done...
+    # Load config template, and device specific config
     device_config = get_device_config_dict(acs_device)
     config_template = load_from_yaml(acs_device, "preconfig_template", config_version=device_config.get("django_acs.acs_config_name"))
 
-    if not config_template:
+    # If we do not have eventcode BOOTSTRAP, remove config that is only supposed to be applied at 0 BOOTSTRAP
+    if "0 BOOTSTRAP" not in acs_session.inform_eventcodes:
+        config_template = {k: v for k, v in config_template.items() if v.get("bootstrap_only", False) is False}
+
+    # Generate the final config_dict, by merging the yaml_struct template with the device_config
+    config_dict = merge_config_template_dict(config_template, device_config)
+
+    # If we don't have any config to apply, we are done.
+    if not config_dict:
         logger.debug(
-            f"{acs_session.tag}/{acs_device}: pre_config, device has no pre_config template, hook is done."
+            f"{acs_session.tag}/{acs_device}: pre_config empty, hook is done."
         )
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
@@ -947,16 +957,38 @@ def verify_client_ip(acs_http_request, hook_state):
 
     if acs_session.access_domain == "wifi":
         pass
+    elif acs_session.access_domain == "mobile":
+        logger.info(f"{acs_session}/{acs_device}: Mobile, use ICCID ({acs_device.hook_state.get('iccid', None)}) for validation.")
+
+        acs_session.client_ip_verified = acs_device.get_related_device().verify_acs_client_ip(
+            acs_session.client_ip, iccid=acs_device.hook_state.get('iccid', None)
+        )
+
+    elif acs_session.access_domain == "mobile_cpe":
+        # We need to verify via the client IP but towards SIM ip's only, let MRX know by specifying mobile_ip=True
+        # This also makes MRX associate the device to the relevant circuitdeviceport.
+        connection_request_hostname = urlparse(acs_device.acs_connectionrequest_url).hostname
+
+        if connection_request_hostname == acs_session.client_ip:
+            logger.info(f"{acs_session}/{acs_device}: Is a candidate for router registration")
+            register_router = True
+        else:
+            logger.info(f"{acs_session}/{acs_device}: Is NOT a candidate for router reg., client_ip:{acs_session.client_ip} != connection_request_hostname:{connection_request_hostname}")
+            register_router = False
+
+        logger.info(f"{acs_session}/{acs_device}: Mobile CPE, use SIM IP for verification (ip: {acs_session.client_ip})")
+        acs_session.client_ip_verified = acs_device.get_related_device().verify_acs_client_ip(
+            acs_session.client_ip, mobile_ip=True, register_router=register_router
+        )
     else:
         # set acs_session.client_ip_verified based on the outcome of verify_acs_client_ip(acs_session.client_ip)
-        acs_session.client_ip_verified = (
-            acs_session.acs_device.get_related_device().verify_acs_client_ip(
-                acs_session.client_ip
-            )
+        acs_session.client_ip_verified = acs_session.acs_device.get_related_device().verify_acs_client_ip(
+            acs_session.client_ip
         )
-        logger.info(
-            f"{acs_session}: client_ip_verified set to {acs_session.client_ip_verified} for client (ip: {acs_session.client_ip})"
-        )
+        
+    logger.info(
+        f"{acs_session}: client_ip_verified set to {acs_session.client_ip_verified} for client (ip: {acs_session.client_ip})"
+    )
 
     acs_session.save()
 
@@ -1069,7 +1101,100 @@ def factory_default(acs_http_request, hook_state):
     return root, body, hook_state
 
 
+def avm_access(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    root_object = acs_session.root_data_model.root_object
+
+    # Only run on AVM products.
+    if acs_device.model.name not in ["FRITZ!Box", "FRITZ!Repeater"]:
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # Get overview of exsisting users.
+    if not hook_state.get("users_retreived"):
+        hook_state["users_retreived"] = str(timezone.now())
+        root, body = cwmp_GetPrameterValues_soap([f"{root_object}.User."], "avm:user_retreive", acs_session)
+        return root, body, hook_state
+
+    # Process  avm:user_retreive response.
+    if acs_http_request.cwmp_id == "avm:user_retreive":
+        if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse":
+            logger.info(
+                f"{acs_session.tag}/{acs_device}: beacon_extender_test processing GetParameterValuesResponse/Fault."
+            )
+
+            value_dict = {}
+            for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
+                key = valuestruct.find('Name').text
+                value = valuestruct.find('Value').text
+                value_dict[key] = value
+
+            print(value_dict)
+
+    # Set user_config
+    if not hook_state.get("user_set"):
+        hook_state["user_set"] = str(timezone.now())
+
+        parameter_dict = {
+            "InternetGatewayDevice.UserInterface.RemoteAccess.Enable": ("boolean", True),
+            "InternetGatewayDevice.UserInterface.RemoteAccess.Port": ("unsignedInt", 14426),
+            "InternetGatewayDevice.User.1.Enable": ("boolean", True),
+            "InternetGatewayDevice.User.1.Username": ("string", "remoto"),
+            "InternetGatewayDevice.User.1.Password": ("string", "RemotoMan1"),
+            "InternetGatewayDevice.User.1.RemoteAccessCapable": ("boolean", True),
+        }
+
+        # def cwmp_SetParameterAttributes(attribute_dict, ParameterKey, cwmp_id, acs_session):
+        root, body = _cwmp_SetParameterValues_soap(
+            parameter_dict,
+            str(acs_device.current_config_level),
+            "set:attributes",
+            acs_session,
+        )
+
+        return root, body, hook_state
+
+    hook_state["hook_done"] = str(timezone.now())
+    logger.info(f"{acs_session.tag}/{acs_device}: Hook called.")
+
+    # Send None, no action.
+    return None, None, hook_state
+
+
+def iccid_query(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    root_object = acs_session.root_data_model.root_object
+
+    # Process  iccid_retrieve response.
+    if acs_http_request.cwmp_id == "iccid_retrieve":
+        if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse":
+            logger.info(
+                f"{acs_session.tag}/{acs_device}: iccid_retrieve processing GetParameterValuesResponse/Fault."
+            )
+
+            value_dict = {}
+            for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
+                key = valuestruct.find('Name').text
+                value = valuestruct.find('Value').text
+                value_dict[key] = value
+            acs_device.hook_state["iccid"] = value_dict.get(f"{root_object}.Cellular.Interface.1.USIM.ICCID", None)
+
+    # Get the ICCID
+    if not hook_state.get("iccid_retreived"):
+        hook_state["iccid_retreived"] = str(timezone.now())
+        root, body = cwmp_GetPrameterValues_soap([f"{root_object}.Cellular.Interface.1.USIM.ICCID"], "iccid_retrieve", acs_session)
+        return root, body, hook_state
+
+    # We are done
+    hook_state["hook_done"] = str(timezone.now())
+    return None, None, hook_state
+
+
 # HOOK HELPER FUNCTIONS
+
+
 def _add_pvs_type(element, key, value_type, value):
     struct = etree.SubElement(element, "ParameterValueStruct")
     nameobj = etree.SubElement(struct, "Name")
@@ -1088,6 +1213,9 @@ def _add_pvs_type(element, key, value_type, value):
     elif value_type == "int":
         valueobj.set(nse("xsi", "type"), "xsd:int")
         valueobj.text = str(int(value))
+    elif value_type == "hexBinary":
+        valueobj.set(nse("xsi", "type"), "xsd:hexBinary")
+        valueobj.text = str(value)
 
     return element
 
@@ -1101,7 +1229,7 @@ def _add_pas(element, key, value):
     notificationobj = etree.SubElement(struct, "Notification")
     notificationobj.text = str(value)
     accesslistchangeobj = etree.SubElement(struct, "AccessListChange")
-    accesslistchangeobj.text = "1"
+    accesslistchangeobj.text = "0"
     accesslistobj = etree.SubElement(struct, "AccessList")
     accesslistobj.set(nse("soap-enc", "arrayType"), "cwmp:ParameterValueStruct[%s]" % 0)
 
@@ -1328,7 +1456,7 @@ def get_device_config_dict(acs_device):
     # Retreives the device device_config dict.
     device_config = {}
     if related_device:
-        device_config = related_device.get_acs_config()
+        device_config = related_device.get_acs_config(access_domain=acs_device.hook_state.get("latest_access_domain", None))
 
     device_config["django_acs.acs.informinterval"] = acs_settings.INFORM_INTERVAL
     # add acs client xmpp settings (only if we have an xmpp account for this device)
@@ -1450,6 +1578,7 @@ def load_tracked_parameters(acs_device, config_version="default"):
 
 def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
     acs_model = acs_device.model
+
     yaml_struct = yaml.safe_load(getattr(acs_model, field_name))
 
     # If we dod not load anything from the AcsDeviceModel config field, we return an empty dict.
@@ -1458,7 +1587,10 @@ def load_from_yaml(acs_device, field_name, config_version="default", flatten=Tru
 
     # Try to load the requested config_version, if it is not present load the "default" version.
     if config_version not in yaml_struct.keys():
+        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version:{config_version} does not exist, using \"default\".")
         config_version = "default"
+    else:
+        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version:{config_version}")
 
     # Flatten the data
     if flatten:
@@ -1481,3 +1613,4 @@ def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
             else:
                 out_data[key_path][k] = v
     return out_data
+

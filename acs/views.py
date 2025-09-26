@@ -15,10 +15,10 @@ from django.db.models import F
 
 from .models import *
 from .utils import get_value_from_parameterlist, create_xml_document, get_client_ip
-from .response import nse, get_soap_envelope,get_soap_xml_object
+from .response import nse, get_soap_envelope, get_soap_xml_object
 from .conf import acs_settings
 from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default, device_vendor_config
-from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip, full_parameters_request
+from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip, full_parameters_request, avm_access, iccid_query
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 logger.setLevel(logging.INFO)
@@ -31,7 +31,7 @@ class AcsServerView2(View):
 
     def post(self, request, *args, **kwargs):
         # Get the session, if none found return a new in memory only session
-        acs_session = _get_acs_session(request,AcsSession)
+        acs_session = _get_acs_session(request, AcsSession)
 
         # Get a bool that tells us if the client exceeds the ratelimit
         exceeds_ratelimit = _ratelimit_acs_sessions(acs_session)
@@ -48,7 +48,7 @@ class AcsServerView2(View):
         # If the acs_Session is in memory only (this is a new acs session), we save it now.
         if acs_session.pk is None:
             # set the access_domain, for new sessions.
-            acs_session.access_domain = kwargs.get('access_domain',None)
+            acs_session.access_domain = kwargs.get('access_domain', None)
             acs_session.save()
 
         # Limit each session to 24 acs_http_requests
@@ -58,7 +58,7 @@ class AcsServerView2(View):
             return HttpResponseBadRequest(message)
 
         # Save the acs_http_request, and return the acs_http_request, request_xml and request_headerdict.
-        acs_http_request,request_xml,request_headerdict = _save_acs_http_request(acs_session,request)
+        acs_http_request, request_xml, request_headerdict = _save_acs_http_request(acs_session,request)
 
         # If we have a request body, try to parse it.
         if acs_http_request.body:
@@ -69,14 +69,14 @@ class AcsServerView2(View):
                 return HttpResponseBadRequest(message)
 
             # Validate XML namespace
-            xml_ns = _get_xml_ns(request_xml,acs_session)
+            xml_ns = _get_xml_ns(request_xml, acs_session)
             if xml_ns:
                 acs_session.cwmp_namespace = xml_ns
             else:
                 return HttpResponseBadRequest("Request XML is malformed.")
 
             # Validate SOAP request
-            soap_body = _validate_soap(request_xml,acs_http_request)
+            soap_body = _validate_soap(request_xml, acs_http_request)
 
             if soap_body is not None:
                 acs_http_request.request_soap_valid = True
@@ -94,35 +94,50 @@ class AcsServerView2(View):
 
         # Get the hook state
         hook_state = acs_session.hook_state
+
         # Initialize hook_state if it is None
         if hook_state is None:
             hook_state = {}
 
-        hook_list = [
-            (process_inform, "process_inform"),
-            (verify_client_ip, "verify_client_ip"),
-            (factory_default, "factory_default"),
-            (device_firmware_upgrade, "device_firmware_upgrade"),
-            (configure_xmpp, "configure_xmpp"),
-            (beacon_extender_test, "beacon_extender_test"),
-            (device_vendor_config, "device_vendor_config"),
-            (preconfig, "preconfig"),
-            (device_config, "device_config"),
-            (device_attributes, "device_attributes"),
-            (track_parameters, "track_parameters"),
-            (full_parameters_request, "full_parameters_request"),
-        ]
+        if acs_session.access_domain == "mobile":
+            hook_list = [
+                (process_inform, "process_inform"),
+                (iccid_query, "icc_query"),
+                (verify_client_ip, "verify_client_ip"),
+                (device_firmware_upgrade, "device_firmware_upgrade"),
+                (preconfig, "preconfig"),
+                (device_config, "device_config"),
+                (device_attributes, "device_attributes"),
+                (track_parameters, "track_parameters"),
+                (full_parameters_request, "full_parameters_request"),
+            ]
+        else:
+            hook_list = [
+                (process_inform, "process_inform"),
+                (verify_client_ip, "verify_client_ip"),
+                (factory_default, "factory_default"),
+                (device_firmware_upgrade, "device_firmware_upgrade"),
+                (configure_xmpp, "configure_xmpp"),
+                (beacon_extender_test, "beacon_extender_test"),
+                (device_vendor_config, "device_vendor_config"),
+                (preconfig, "preconfig"),
+                # (avm_access, "avm_access"),`
+                (device_config, "device_config"),
+                (device_attributes, "device_attributes"),
+                (track_parameters, "track_parameters"),
+                (full_parameters_request, "full_parameters_request"),
+            ]
 
-        ### CALL THE HOOKS
-        for (hook_function,hook_state_key) in hook_list:
-            current_hook_state = hook_state.get(hook_state_key,{}).copy()
+        # CALL THE HOOKS
+        for (hook_function, hook_state_key) in hook_list:
+            current_hook_state = hook_state.get(hook_state_key, {}).copy()
 
             if "hook_done" in current_hook_state.keys():
                 continue
 
             logger.debug(f"{acs_session.tag}/{acs_session.acs_device}: Calling hook {hook_state_key}")
 
-            response_root,response_body,new_hook_state = hook_function(acs_http_request,current_hook_state)
+            response_root, response_body, new_hook_state = hook_function(acs_http_request, current_hook_state)
 
             acs_session.hook_state[hook_state_key] = new_hook_state
             acs_session.save()
@@ -198,15 +213,16 @@ def _validate_soap(request_xml,acs_http_request):
             return soap_body
 
 
-def _get_xml_ns(request_xml,acs_session):
+def _get_xml_ns(request_xml, acs_session):
     # Va:lidate that we indeed have a CMWP request that is valid, and extract the SOAP data.    else:
-    if not 'cwmp' in request_xml.nsmap:
+    if 'cwmp' not in request_xml.nsmap:
         logger.warning(f"{acs_session}, No cwmp namespace found in the soap envelope, this is not a valid CWMP request posted by client (ip: {acs_session.ip})")
         return False
     else:
         return request_xml.nsmap['cwmp']
 
-def _get_acs_session(request,AcsSession):
+
+def _get_acs_session(request, AcsSession):
     ip = get_client_ip(request)
     # Do we have an acs_session_id cookie ?
     if 'acs_session_id' in request.COOKIES:
