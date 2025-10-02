@@ -164,7 +164,7 @@ def process_inform(acs_http_request, hook_state):
     connectionrequest_url = get_value_from_parameterlist(
         parameterlist, f"{root_object}.ManagementServer.ConnectionRequestURL"
     )
-    acs_device.acs_connectionrequest_url = connectionrequest_url
+    acs_device.acs_connectionrequest_url = connectionrequest_url or ""
 
     # update current_config_level from Device.ManagementServer.ParameterKey
     parameterkey = get_value_from_parameterlist(
