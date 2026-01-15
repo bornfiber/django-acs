@@ -1,9 +1,9 @@
 from datetime import timedelta
-from defusedxml.lxml import fromstring
+from django import template
 from lxml import etree
+
 import json
 
-from django import template
 
 register = template.Library()
 
@@ -43,8 +43,9 @@ def prettyprintxml(xml):
     Catch lxml.etree.XMLSyntaxError so we still return the xml if it has syntax errors, with a message.
     '''
     try:
+        parser = etree.XMLParser(resolve_entities=False)
         return etree.tostring(
-            fromstring(xml.encode('utf-8')),
+            etree.fromstring(xml.encode('utf-8'), parser=parser),
             pretty_print=True,
             xml_declaration=True,
             encoding='utf-8',

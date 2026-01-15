@@ -1,15 +1,14 @@
-from lxml import etree
-from defusedxml.lxml import fromstring
-import uuid
-
 from django.db import models
 from django.http import HttpResponse
 from django.urls import reverse
-from django.core.exceptions import ObjectDoesNotExist
+from lxml import etree
 
-from acs.response import get_soap_envelope
 from acs.models import AcsHttpBaseModel
+from acs.response import get_soap_envelope
 from acs.utils import create_xml_document
+
+import uuid
+
 
 class AcsHttpRequest(AcsHttpBaseModel):
     """ Every HTTP request received on the ACS server URL is saved as an instance
@@ -61,7 +60,8 @@ class AcsHttpRequest(AcsHttpBaseModel):
             root, body = get_soap_envelope(response_cwmp_id, self.acs_session)
 
             ### add the cwmp soap object to the soap body
-            cwmpobj = fromstring(job.cwmp_rpc_object_xml.encode('utf-8'))
+            parser = etree.XMLParser(resolve_entities=False)
+            cwmpobj = etree.fromstring(job.cwmp_rpc_object_xml.encode('utf-8'), parser=parser)
             body.append(cwmpobj)
 
             ### get the rpc method

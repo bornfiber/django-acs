@@ -1,22 +1,19 @@
-from acs.models import AcsBaseModel
-from lxml import etree
-import requests
-from defusedxml.lxml import fromstring
-from os import urandom
 from collections import OrderedDict
-import logging
-from random import choice
-
-from django.db import models
+from django.apps import apps
 from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
+from django.db import models
 from django.urls import reverse
 from django.utils import timezone
-from django.apps import apps
-from django.core.exceptions import ObjectDoesNotExist
+from lxml import etree
+from random import choice
 
-from acs.response import get_soap_xml_object
-from acs.utils import run_ssh_command, get_value_from_parameterlist
 from acs.conf import acs_settings
+from acs.models import AcsBaseModel
+from acs.utils import run_ssh_command
+
+import requests
+import logging
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 
@@ -273,7 +270,8 @@ class AcsDevice(AcsBaseModel):
     def acs_parameter_dict(self):
         if not self.acs_parameters:
             return False
-        xmlroot = fromstring(bytes(self.acs_parameters, 'utf-8'))
+        parser = etree.XMLParser(resolve_entities=False)
+        xmlroot = etree.fromstring(bytes(self.acs_parameters, 'utf-8'), parser=parser)
         paramdict = {}
         for child in xmlroot.iterchildren():
             value = child.find('Value')
@@ -289,7 +287,8 @@ class AcsDevice(AcsBaseModel):
     def acs_get_parameter_value(self, parameterpath):
         if not self.acs_parameters or not parameterpath:
             return False
-        xmlroot = fromstring(bytes(self.acs_parameters, 'utf-8'))
+        parser = etree.XMLParser(resolve_entities=False)
+        xmlroot = etree.fromstring(bytes(self.acs_parameters, 'utf-8'), parser=parser)
         pvslist = xmlroot.xpath('./ParameterValueStruct/Name[text()="%s"]/..' % parameterpath)
         if pvslist:
             valuelist =  pvslist[0].xpath('./Value')

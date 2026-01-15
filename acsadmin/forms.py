@@ -1,7 +1,8 @@
 from django import forms
 from django.conf import settings
-from defusedxml.lxml import fromstring
 from django.core.exceptions import ValidationError
+from lxml import etree
+
 
 class AcsDeviceActionForm(forms.Form):
     action = forms.ChoiceField(
@@ -33,7 +34,8 @@ class AcsDeviceActionForm(forms.Form):
         if cleaned_data['xml']:
             try:
                 # fromstring takes bytes, so convert the string from our form to bytes, utf-8 encoded of course
-                xmlroot = fromstring(cleaned_data['xml'].encode('utf-8'))
+                parser = etree.XMLParser(resolve_entities=False)
+                xmlroot = etree.fromstring(cleaned_data['xml'].encode('utf-8'), parser=parser)
             except Exception as E:
                 errorlist.append(ValidationError('XML not valid: %s' % E, code='invalid_xml'))
 

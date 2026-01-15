@@ -1,6 +1,5 @@
-import json, logging, uuid
+import json, logging
 from lxml import etree
-from defusedxml.lxml import fromstring
 from datetime import timedelta
 
 from django.views.decorators.csrf import csrf_exempt
@@ -283,7 +282,8 @@ def _parse_acs_request_header(request,acs_session):
 def _parse_acs_request_xml(request,acs_session):
     if request.body:
         try:
-            xmlroot = fromstring(request.body.decode('utf-8','ignore').encode('utf-8'))
+            parser = etree.XMLParser(resolve_entities=False)
+            xmlroot = etree.fromstring(request.body.decode('utf-8','ignore').encode('utf-8'), parser=parser)
             return xmlroot
         except Exception as E:
             logger.warning(f"got exception parsing ACS XML: {E}")
@@ -369,7 +369,8 @@ class AcsServerView(View):
         validxml=False
         if request.body:
             try:
-                xmlroot = fromstring(request.body.decode('utf-8','ignore').encode('utf-8'))
+                parser = etree.XMLParser(resolve_entities=False)
+                xmlroot = etree.fromstring(request.body.decode('utf-8','ignore').encode('utf-8'), parser=parser)
                 validxml=True
             except Exception as E:
                 acs_session.acs_log('got exception parsing ACS XML: %s' % E)

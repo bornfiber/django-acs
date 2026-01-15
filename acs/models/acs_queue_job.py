@@ -1,8 +1,8 @@
-from acs.models import AcsBaseModel
 from django.urls import reverse
 from django.db import models
 from lxml import etree
-from defusedxml.lxml import fromstring
+
+from acs.models import AcsBaseModel
 
 
 class AcsQueueJob(AcsBaseModel):
@@ -27,7 +27,8 @@ class AcsQueueJob(AcsBaseModel):
     @property
     def cwmp_rpc_method(self):
         ### parse XML to etree object
-        cwmpobj = fromstring(bytes(self.cwmp_rpc_object_xml, 'utf-8'))
+        parser = etree.XMLParser(resolve_entities=False)
+        cwmpobj = etree.fromstring(bytes(self.cwmp_rpc_object_xml, 'utf-8'), parser=parser)
 
         ### returns 'FooMethod' from string '{urn:dslforum-org:cwmp-1-0}FooMethod'
         try:
@@ -37,7 +38,8 @@ class AcsQueueJob(AcsBaseModel):
         return method
 
     def add_job_tag_as_command_key(self):
-        element = fromstring(bytes(self.cwmp_rpc_object_xml, 'utf-8'))
+        parser = etree.XMLParser(resolve_entities=False)
+        element = etree.fromstring(bytes(self.cwmp_rpc_object_xml, 'utf-8'), parser=parser)
         cmdkey = etree.SubElement(element, 'CommandKey')
         cmdkey.text = self.tag
         self.cwmp_rpc_object_xml=etree.tostring(element, xml_declaration=True).decode('utf-8')

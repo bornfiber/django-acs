@@ -1,13 +1,12 @@
-import re
-
-from defusedxml.lxml import fromstring
-
 from django.db import models
 from django.conf import settings
 from django.utils.functional import cached_property
+from lxml import etree
 
 from acs.models import AcsBaseModel
 from acs.conf import acs_settings
+
+import re
 
 
 class AcsHttpBaseModel(AcsBaseModel):
@@ -84,7 +83,8 @@ class AcsHttpBaseModel(AcsBaseModel):
         if not self.body:
             return False
         try:
-            xmlroot = fromstring(bytes(self.body, 'utf-8'))
+            parser = etree.XMLParser(resolve_entities=False)
+            xmlroot = etree.fromstring(bytes(self.body, 'utf-8'), parser=parser)
             # use acs_settings.SOAP_NAMESPACES directly here (rather than self.acs_session.soap_namespaces) since the namespace 'soap-env' does not depend on cwmp version
             return xmlroot.find('soap-env:Body', acs_settings.SOAP_NAMESPACES)
         except Exception:
