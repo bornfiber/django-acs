@@ -40,7 +40,7 @@ class AcsXmpp(ClientXMPP):
 def do_work():
     xmpp = AcsXmpp(settings.ACS_XMPP_JABBERID, settings.ACS_XMPP_PASSWORD)
     xmpp.ssl_version = ssl.PROTOCOL_TLSv1_2
-    xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE)
+    xmpp.connect()
 
     while True:
         acs_device_list = AcsDevice.objects.filter(connection_request=True)[:10]

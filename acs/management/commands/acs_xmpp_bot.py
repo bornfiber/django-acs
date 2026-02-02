@@ -15,7 +15,7 @@ class Command(BaseCommand):
 
         ### create AcsXmppBot instance
         xmpp = AcsXmppBot(settings.ACS_XMPP_JABBERID, settings.ACS_XMPP_PASSWORD)
-        xmpp.connect(address=settings.ACS_XMPP_SERVERTUPLE)
+        xmpp.connect()
         xmpp.process(block=True)
 
 
