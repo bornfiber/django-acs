@@ -195,6 +195,7 @@ def process_inform(acs_http_request, hook_state):
 
     # Record the latest_access_domain
     acs_device.hook_state["latest_access_domain"] = acs_session.access_domain
+    acs_device.hook_state["root_object"] = root_object
     # Save the acs_device
     acs_device.save()
 
@@ -352,7 +353,7 @@ def configure_xmpp(acs_http_request, hook_state):
 
         # Add the first object in the addobject_list
         root, body = _cwmp_AddObject_soap(
-            addobject_list[0][0], "hejsa", response_cwmp_id, acs_session
+            addobject_list[0][0], "20/01-1977 00:00", response_cwmp_id, acs_session
         )
         return root, body, hook_state
 
@@ -596,7 +597,7 @@ def device_config(acs_http_request, hook_state):
 
         # Add the first object in the addobject_list
         root, body = _cwmp_AddObject_soap(
-            addobject_list[0][0], "hejsa", response_cwmp_id, acs_session
+            addobject_list[0][0], "20/01-1977 00:00", response_cwmp_id, acs_session
         )
         return root, body, hook_state
 
