@@ -314,7 +314,7 @@ class AcsDevice(AcsBaseModel):
         ### do the request
         try:
             r = requests.get(url, auth=auth,timeout=3)
-            if r.status_code == 200:
+            if r.status_code in [200, 204]:
                 return True
         except requests.exceptions.ConnectionError as E:
             ### catching this exception is neccesary because requests does not catch the exception which httplib returns,
