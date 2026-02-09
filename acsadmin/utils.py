@@ -60,7 +60,7 @@ def get_datamodel_from_devicesummary(summary):
     """
     Regex to return "Device:1.0" from "Device:1.0[](Baseline:1), ABCService:1.0[1](Baseline:1), XYZService:1.0[1](Baseline:1)"
     """
-    match = re.search('(.*:\d.\d)\[\]', summary)
+    match = re.search('(.*:\\d.\\d)\\[\\]', summary)
     if match:
         return match.group(1)
     else:
