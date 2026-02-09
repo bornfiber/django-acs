@@ -1,15 +1,15 @@
 from acs.models import AcsBaseModel
-from django.urls import reverse
-from django.conf import settings
-from django.db import models
 from django.core.exceptions import ValidationError
+from django.urls import reverse
+from django.db import models
 from acs.default_acs_parametermap import default_acs_device_parametermap
-import yaml
+from yaml import safe_load, YAMLError
+
 
 def validate_yaml(value):
     try:
-        yaml.load_safe(value)
-    except (yaml.YAMLError), e:
+        safe_load(value)
+    except YAMLError as e:
         raise ValidationError(f"YAML error: {e}")
 
 
@@ -21,10 +21,10 @@ class AcsDeviceModel(AcsBaseModel):
     desired_software_version = models.CharField(max_length=50, blank=True)
     acs_parameter_map_overrides = models.JSONField(null=True, blank=True)
     acs_connectionrequest_digest_auth = models.BooleanField(default=False)
-    xmpp_template = models.TextField(blank=True, default="")
-    preconfig_template = models.TextField(blank=True, default="")
-    config_template = models.TextField(blank=True, default="")
-    tracked_parameters = models.TextField(blank=True, default="")
+    xmpp_template = models.TextField(blank=True, default="", validators=[validate_yaml])
+    preconfig_template = models.TextField(blank=True, default="", validators=[validate_yaml])
+    config_template = models.TextField(blank=True, default="", validators=[validate_yaml])
+    tracked_parameters = models.TextField(blank=True, default="", validators=[validate_yaml])
     vendor_config_file = models.CharField(max_length=50, blank=True, default="")
 
     def __str__(self):
@@ -47,7 +47,6 @@ class AcsDeviceModel(AcsBaseModel):
         """
         parameterlist = []
         if self.category.name in ["WIFI", "MODEM"]:
-            #This acs device category needs notifications for the whole Wifi tree
+            # This acs device category needs notifications for the whole Wifi tree
             parameterlist.append("%s.Wifi." % root_object)
         return parameterlist
-
