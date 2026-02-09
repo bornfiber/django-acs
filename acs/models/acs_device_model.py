@@ -2,7 +2,16 @@ from acs.models import AcsBaseModel
 from django.urls import reverse
 from django.conf import settings
 from django.db import models
+from django.core.exceptions import ValidationError
 from acs.default_acs_parametermap import default_acs_device_parametermap
+import yaml
+
+def validate_yaml(value):
+    try:
+        yaml.load_safe(value)
+    except (yaml.YAMLError), e:
+        raise ValidationError(f"YAML error: {e}")
+
 
 class AcsDeviceModel(AcsBaseModel):
     vendor = models.ForeignKey('acs.AcsDeviceVendor', related_name='acsdevicemodels', on_delete=models.PROTECT)
@@ -41,5 +50,4 @@ class AcsDeviceModel(AcsBaseModel):
             #This acs device category needs notifications for the whole Wifi tree
             parameterlist.append("%s.Wifi." % root_object)
         return parameterlist
-
 
