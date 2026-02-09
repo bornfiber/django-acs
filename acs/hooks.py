@@ -353,7 +353,7 @@ def configure_xmpp(acs_http_request, hook_state):
 
         # Add the first object in the addobject_list
         root, body = _cwmp_AddObject_soap(
-            addobject_list[0][0], "20/01-1977 00:00", response_cwmp_id, acs_session
+            addobject_list[0][0], "1977-01-20 00:00:00+00", response_cwmp_id, acs_session
         )
         return root, body, hook_state
 
@@ -597,7 +597,7 @@ def device_config(acs_http_request, hook_state):
 
         # Add the first object in the addobject_list
         root, body = _cwmp_AddObject_soap(
-            addobject_list[0][0], "20/01-1977 00:00", response_cwmp_id, acs_session
+            addobject_list[0][0], "1977-01-20 00:00:00+00", response_cwmp_id, acs_session
         )
         return root, body, hook_state
 
