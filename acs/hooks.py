@@ -1578,27 +1578,40 @@ def load_tracked_parameters(acs_device, config_version="default"):
 
 
 def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
+    # Load the YAML template from the requested AcsDeviceModel field, it contains all config versions.
     acs_model = acs_device.model
-
     yaml_struct = yaml.safe_load(getattr(acs_model, field_name))
 
-    # If we dod not load anything from the AcsDeviceModel config field, we return an empty dict.
+    # If we did not load anything from the AcsDeviceModel config field, we return an empty dict.
     if yaml_struct is None:
         return {}
 
-    # Try to load the requested config_version, if it is not present load the "default" version.
+    # Verify if the requested config_verion is defined within the template, if not return the mandatory "default" version.
     if config_version not in yaml_struct.keys():
         logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version:{config_version} does not exist, using \"default\".")
         config_version = "default"
     else:
         logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version:{config_version}")
 
-    # Flatten the data
+    # Get the root object for the current AcsDevice, this should alway be defined from the Inform processing.
+    root_object = acs_device.hook_state["root_object"]
+
+    # Replace the root_root object if we see any_keys with the "__root_object__" placeholder.
+    replaced_yaml_struct = {}
+    for k, v in yaml_struct[config_version].items():
+        if k[:15] == "__root_object__":
+            new_key = root_object + k[15:]
+            replaced_yaml_struct[new_key] = v
+        else:
+            replaced_yaml_struct[k] = v
+
+    # Flatten the data if requested.
     if flatten:
-        flattened_yaml_struct = flatten_yaml_struct(yaml_struct[config_version])
+        flattened_yaml_struct = flatten_yaml_struct(replaced_yaml_struct)
         return flattened_yaml_struct
     else:
-        return yaml_struct
+        # If flattening is not requested, it is propably for display in the WebUI.
+        return replaced_yaml_struct
 
 
 def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
