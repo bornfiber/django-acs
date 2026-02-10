@@ -1577,7 +1577,7 @@ def load_tracked_parameters(acs_device, config_version="default"):
     return sorted(list(device_tracked_set))
 
 
-def load_from_yaml(acs_device, field_name, config_version="default", flatten=True):
+def load_from_yaml(acs_device, field_name, config_version="default"):
     # Load the YAML template from the requested AcsDeviceModel field, it contains all config versions.
     acs_model = acs_device.model
     yaml_struct = yaml.safe_load(getattr(acs_model, field_name))
@@ -1596,22 +1596,27 @@ def load_from_yaml(acs_device, field_name, config_version="default", flatten=Tru
     # Get the root object for the current AcsDevice, this should alway be defined from the Inform processing.
     root_object = acs_device.hook_state["root_object"]
 
-    # Replace the root_root object if we see any_keys with the "__root_object__" placeholder.
-    replaced_yaml_struct = {}
-    for k, v in yaml_struct[config_version].items():
-        if k[:15] == "__root_object__":
-            new_key = root_object + k[15:]
-            replaced_yaml_struct[new_key] = v
-        else:
-            replaced_yaml_struct[k] = v
+    # Flatten the data.
+    flattened_yaml_struct = flatten_yaml_struct(yaml_struct[config_version])
 
-    # Flatten the data if requested.
-    if flatten:
-        flattened_yaml_struct = flatten_yaml_struct(replaced_yaml_struct)
-        return flattened_yaml_struct
-    else:
-        # If flattening is not requested, it is propably for display in the WebUI.
-        return replaced_yaml_struct
+    # Replace the "__root_object__" placeholder in the parametername(key)
+    replaced_yaml_struct = {}
+
+    for k, v in flattened_yaml_struct.items():
+        replaced_yaml_struct[k.replace("__root_object__", root_object)] = _default_value_replace(v, root_object)
+
+    return replaced_yaml_struct
+
+
+def _default_value_replace(values_dict, root_object):
+    output_dict = {}
+    for k, v in values_dict.items():
+        if k == "default" and isinstance(v, str):
+            output_dict[k] = v.replace("__root_object__", root_object)
+        else:
+            output_dict[k] = v
+
+    return output_dict
 
 
 def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
@@ -1627,4 +1632,3 @@ def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
             else:
                 out_data[key_path][k] = v
     return out_data
-
