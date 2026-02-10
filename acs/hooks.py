@@ -1590,6 +1590,10 @@ def load_from_yaml(acs_device, field_name, config_version="default"):
     # Get the root object for the current AcsDevice, this should alway be defined from the Inform processing.
     root_object = acs_device.hook_state["root_object"]
 
+    # If the passed config_version is None, set it to "default".
+    if config_version is None:
+        config_version = "default"
+
     # Search for available config version until one is available with descending prefernece, version+root_object, version, default.
     if f"{config_version}_{root_object}" in yaml_struct.keys():
         logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
