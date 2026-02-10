@@ -1587,37 +1587,24 @@ def load_from_yaml(acs_device, field_name, config_version="default"):
     if yaml_struct is None:
         return {}
 
-    # Verify if the requested config_verion is defined within the template, if not return the mandatory "default" version.
-    if config_version not in yaml_struct.keys():
-        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version:{config_version} does not exist, using \"default\".")
-        config_version = "default"
-    else:
-        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version:{config_version}")
-
     # Get the root object for the current AcsDevice, this should alway be defined from the Inform processing.
     root_object = acs_device.hook_state["root_object"]
+
+    # Search for available config version until one is available with descending prefernece, version+root_object, version, default.
+    if f"{config_version}_{root_object}" in yaml_struct.keys():
+        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
+        config_version = f"{config_version}_{root_object}"
+    elif config_version in yaml_struct.keys():
+        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
+        pass
+    else:
+        config_version = "default"
+        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
 
     # Flatten the data.
     flattened_yaml_struct = flatten_yaml_struct(yaml_struct[config_version])
 
-    # Replace the "__root_object__" placeholder in the parametername(key)
-    replaced_yaml_struct = {}
-
-    for k, v in flattened_yaml_struct.items():
-        replaced_yaml_struct[k.replace("__root_object__", root_object)] = _default_value_replace(v, root_object)
-
-    return replaced_yaml_struct
-
-
-def _default_value_replace(values_dict, root_object):
-    output_dict = {}
-    for k, v in values_dict.items():
-        if k == "default" and isinstance(v, str):
-            output_dict[k] = v.replace("__root_object__", root_object)
-        else:
-            output_dict[k] = v
-
-    return output_dict
+    return flattened_yaml_struct
 
 
 def flatten_yaml_struct(yaml_struct, key_path="", out_data=None):
