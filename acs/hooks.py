@@ -1000,6 +1000,7 @@ def verify_client_ip(acs_http_request, hook_state):
 def beacon_extender_test(acs_http_request, hook_state):
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
+    root_object = acs_device.hook_state["root_object"]
 
     # Only run test on Beacon 2
     if acs_device.model.name not in ["Beacon 2"]:
@@ -1035,7 +1036,7 @@ def beacon_extender_test(acs_http_request, hook_state):
                 value = valuestruct.find('Value').text
                 value_dict[key] = value
 
-            if value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode", None) == "AP_Bridge":
+            if value_dict.get(f"{root_object}.X_ALU-COM_Wifi.WorkMode", None) == "AP_Bridge":
                 # The beacon is an extender.
                 logger.info(
                     f"{acs_session.tag}/{acs_device}: beacon is an extender."
@@ -1044,7 +1045,7 @@ def beacon_extender_test(acs_http_request, hook_state):
                 acs_device.hook_state["no_config"] = True
                 acs_device.hook_state["no_track"] = True
                 acs_device.hook_state["beacon_extender"] = True
-            elif value_dict.get("InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode", None) == "RGW":
+            elif value_dict.get(f"{root_object}.X_ALU-COM_Wifi.WorkMode", None) == "RGW":
                 logger.info(
                     f"{acs_session.tag}/{acs_device}: beacon is a router."
                 )
@@ -1063,7 +1064,7 @@ def beacon_extender_test(acs_http_request, hook_state):
         response_cwmp_id = "beacon_extender_test:getnames"
         hook_state["pending_cwmp_id"] = response_cwmp_id
         root, body = cwmp_GetPrameterValues_soap(
-            ["InternetGatewayDevice.X_ALU-COM_Wifi.WorkMode"],
+            [f"{root_object}.X_ALU-COM_Wifi.WorkMode"],
             response_cwmp_id,
             acs_session
         )
