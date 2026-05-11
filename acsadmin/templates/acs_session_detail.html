@@ -3,4 +3,5 @@
 {% block content %}
     {% include 'includes/acs_session_detail_panel.html' with acs_session=object %}
     {% include 'includes/acs_http_conversation_panel.html' with acs_http_conversationlist=object.acs_http_conversationlist headline='ACS Session HTTP Conversation' %}
+    {% include 'includes/acs_session_hook_detail_panel.html' with acs_session_hook_state=object.hook_state %}
 {% endblock content %}

@@ -1,0 +1,23 @@
+{% load custom_template_filters %}
+{% include 'includes/collapsable-panel-header.html' with name='AcsHttpHookState' headline=headline|default:"ACS Session hook state" %}
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Key</th>
+                <th>Data</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for k,v in acs_session_hook_state.items %}
+            <tr>
+                <td>
+                  {{ k }}
+                </td>
+                <td>
+                  {{ v }}
+                </td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% include 'includes/collapsable-panel-footer.html' %}
