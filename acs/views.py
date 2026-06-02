@@ -17,7 +17,7 @@ from .utils import get_value_from_parameterlist, create_xml_document, get_client
 from .response import nse, get_soap_envelope, get_soap_xml_object
 from .conf import acs_settings
 from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default, device_vendor_config
-from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, verify_client_ip, full_parameters_request, avm_access, iccid_query
+from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, pre_verify_hook, verify_client_ip, full_parameters_request, avm_access, iccid_query
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 logger.setLevel(logging.INFO)
@@ -113,6 +113,7 @@ class AcsServerView2(View):
         else:
             hook_list = [
                 (process_inform, "process_inform"),
+                (pre_verify_hook, "pre_verify_hook"),
                 (verify_client_ip, "verify_client_ip"),
                 (factory_default, "factory_default"),
                 (device_firmware_upgrade, "device_firmware_upgrade"),
