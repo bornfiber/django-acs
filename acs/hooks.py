@@ -945,18 +945,17 @@ def pre_verify_hook(acs_http_request, hook_state):
     """
     This is a placeholder hook for any processing that is to be done before client IP verification.
     """
+    if "hook_done" in hook_state.keys():
+        # If the hook is already done, do nothing.
+        return None, None, hook_state
+
     acs_session = acs_http_request.acs_session
     acs_device = acs_session.acs_device
     related_device = acs_device.get_related_device()
-
     if not related_device:
         logger.info(
             f"{acs_session}: Skip pre verify hook, as there is no related device for {acs_device}."
         )
-        return None, None, hook_state
-
-    if "hook_done" in hook_state.keys():
-        # If the hook is already done, do nothing.
         return None, None, hook_state
 
     related_device().acs_session_pre_verify_hook()
