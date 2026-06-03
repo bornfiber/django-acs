@@ -958,7 +958,7 @@ def pre_verify_hook(acs_http_request, hook_state):
         )
         return None, None, hook_state
 
-    related_device().acs_session_pre_verify_hook()
+    related_device.acs_session_pre_verify_hook()
     hook_state["hook_done"] = str(timezone.datetime.now())
     return None, None, hook_state
 
