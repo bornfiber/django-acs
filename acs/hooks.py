@@ -1025,7 +1025,7 @@ def beacon_extender_test(acs_http_request, hook_state):
     root_object = acs_device.hook_state["root_object"]
 
     # Only run test on Beacon 2
-    if acs_device.model.name not in ["Beacon 2"]:
+    if acs_device.model.name not in ["Beacon 2", "Beacon 3.1"]:
         hook_state["hook_done"] = str(timezone.now())
         return None, None, hook_state
 
