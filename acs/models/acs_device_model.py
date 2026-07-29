@@ -27,6 +27,10 @@ class AcsDeviceModel(AcsBaseModel):
     tracked_parameters = models.TextField(blank=True, default="", validators=[validate_yaml])
     vendor_config_file = models.CharField(max_length=50, blank=True, default="")
 
+    # If inform_spread_until is not null, and in the future AcsDevices belonging to this AcsDeviceModel will have the inform interval be increased
+    # by a random number of seconds  in the range 0..300
+    inform_spread_until = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return str("%s - %s" % (self.tag, self.name))
 
