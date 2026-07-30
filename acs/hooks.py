@@ -1273,6 +1273,11 @@ def _cwmp_SetParameterValues_soap(config_dict, ParameterKey, cwmp_id, acs_sessio
     )
     paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
     paramkey.text = ParameterKey
+
+    if ParameterKey:
+        paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
+        paramkey.text = ParameterKey
+
     return root, body
 
 
@@ -1289,6 +1294,10 @@ def cwmp_SetParameterAttributes(attribute_dict, ParameterKey, cwmp_id, acs_sessi
     )
     paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
     paramkey.text = ParameterKey
+
+    if ParameterKey:
+        paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
+        paramkey.text = ParameterKey
 
     root, body = get_soap_envelope(cwmp_id, acs_session)
     body.append(cwmp_obj)
@@ -1321,6 +1330,10 @@ def _cwmp_AddObject_soap(key, ParameterKey, cwmp_id, acs_session):
 
     paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
     paramkey.text = ParameterKey
+    if ParameterKey:
+        paramkey = etree.SubElement(cwmp_obj, "ParameterKey")
+        paramkey.text = ParameterKey
+
     return root, body
 
 
