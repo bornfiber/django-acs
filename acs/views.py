@@ -17,7 +17,8 @@ from .utils import get_value_from_parameterlist, create_xml_document, get_client
 from .response import nse, get_soap_envelope, get_soap_xml_object
 from .conf import acs_settings
 from .hooks import process_inform, preconfig, device_attributes, device_config, track_parameters, get_cpe_rpc_methods, factory_default, device_vendor_config
-from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, pre_verify_hook, verify_client_ip, full_parameters_request, avm_access, iccid_query
+from .hooks import configure_xmpp, beacon_extender_test, device_firmware_upgrade, pre_verify_hook, verify_client_ip, full_parameters_request, avm_access, iccid_query, beacon_ipv6_fix
+from .hooks import inform_spread
 
 logger = logging.getLogger('django_acs.%s' % __name__)
 logger.setLevel(logging.INFO)
@@ -121,7 +122,9 @@ class AcsServerView2(View):
                 (beacon_extender_test, "beacon_extender_test"),
                 (device_vendor_config, "device_vendor_config"),
                 (preconfig, "preconfig"),
-                # (avm_access, "avm_access"),`
+                (inform_spread, "inform_spread"),
+##                (beacon_ipv6_fix, "beacon_ipv6_fix"),
+##                (avm_access, "avm_access"),`
                 (device_config, "device_config"),
                 (device_attributes, "device_attributes"),
                 (track_parameters, "track_parameters"),

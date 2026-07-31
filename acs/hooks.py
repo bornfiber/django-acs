@@ -4,6 +4,7 @@ import uuid
 from lxml import etree
 import yaml
 from urllib.parse import urlparse
+from random import randint
 
 # Dajngo deps
 from django.utils import timezone
@@ -584,6 +585,10 @@ def device_config(acs_http_request, hook_state):
     addobject_list = get_addobject_list(
         config_dict, hook_state["discovered_param_names"]
     )
+
+    # logger.info(
+    #     f"{acs_session.tag}: {acs_device} Addobject list is: {addobject_list}."
+    # )
 
     # If we have objects that need to be added, do so now.
     if addobject_list:
@@ -1214,6 +1219,233 @@ def iccid_query(acs_http_request, hook_state):
     # We are done
     hook_state["hook_done"] = str(timezone.now())
     return None, None, hook_state
+
+
+
+def beacon_ipv6_fix(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    root_object = acs_session.root_data_model.root_object
+    device_hook_state = acs_device.hook_state.get("beacon_ipv6_fix", {})
+    fix_filename = "CFPNORD999"
+
+    # This fix is only relevant for specific Beacon models.
+    # 
+    #if acs_device.model.vendor.oui != "0C7C28" or acs_device.model.vendor.name != "ALCL":
+    if acs_device.model.vendor.oui != "F89B6E" or acs_device.model.vendor.name != "ALCL":
+        # We are done
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # If the acsdevice has the no_config flag (is extender), we don't do anything.
+    if "no_config" in acs_device.hook_state.keys():
+        # We are done
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+#    # Download
+#    cwmp_id = uuid.uuid4().hex
+#    software_url = acs_device.get_vendor_config_url(fix_filename)
+#    root, body = cwmp_Download(software_url, cwmp_id, acs_session, filetype="3 Vendor Configuration File")
+#    logger.info(f"{acs_session.tag}/{acs_device}: Downloading vendor config file {fix_filename}")
+#    #hook_state["ipv6_fix_cwmp_id"] = cwmp_id
+#
+#    device_hook_state["download_command_sent_at"] = str(timezone.now())
+#    acs_device.hook_state["beacon_ipv6_fix"] = device_hook_state
+#    acs_device.save()
+#
+#    hook_state["hook_done"] = str(timezone.datetime.now())
+#    return root, body, hook_state
+
+    if "download_cwmp_id" in hook_state.keys():
+        # We have issued a download command, lets check if the response matches the cwmp id. 
+        if acs_http_request.cwmp_rpc_method == "DownloadResponse":
+            logger.info(f"{acs_session}: Checking if DownloadResponse is ok.")
+            rpc_response = acs_http_request.soap_body.find(
+                "cwmp:%s" % acs_http_request.cwmp_rpc_method,
+                acs_http_request.acs_session.soap_namespaces,
+            )
+            status = rpc_response.find("Status")
+            if status is None:
+                logger.warning(
+                    f"{acs_session}: {acs_device} sent DownloadResponse without status code"
+                )
+            else:
+                if status.text in ["0", "1"]:
+                    logger.info(
+                        f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse."
+                    )
+                    hook_state["download_ok"] = str(timezone.datetime.now())
+                    hook_state["hook_done"] = str(timezone.datetime.now())
+                    # End the ACS session on OK DownloadResponse. We assume that the device will reconnect after the firmware update.
+                    return "*END*", None, hook_state
+                else:
+                    logger.info(
+                        f"{acs_session}: {acs_device} responded with status_code: {status.text} in DownloadResponse."
+                    )
+                    hook_state["download_failed"] = str(timezone.datetime.now())
+
+            hook_state["hook_done"] = True
+            return None, None, hook_state
+
+    # If the session indicates "0 BOOTSTRAP", we clear any existing state and re-test.
+    if "0 BOOTSTRAP" in acs_session.inform_eventcodes:
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: beacon_ipv6_fix, removing state 0 BOOTSTRAP detected."
+        )
+        device_hook_state = {}
+
+    # If the fix is already applied, we are done.
+    if device_hook_state.get("applied", None) is True:
+        # We are done
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: beacon_ipv6_fix, fix already applied hook done."
+        )
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # Process ipv6_fix_retrieve response.
+    if acs_http_request.cwmp_id == "ipv6_fix_retrieve":
+        if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse":
+            logger.info(
+                f"{acs_session.tag}/{acs_device}: beacon_ipv6_fix processing GetParameterValuesResponse/Fault."
+            )
+
+            value_dict = {}
+            for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
+                key = valuestruct.find('Name').text
+                value = valuestruct.find('Value').text
+                value_dict[key] = value
+
+            for k, v in value_dict.items():
+                print(f"test: {k} -> {v}")
+
+            # If the config file is already applied
+            if fix_filename in [v for k,v in value_dict.items() if k.endswith('.Description')]:
+                device_hook_state["applied"] = True
+                acs_device.hook_state["beacon_ipv6_fix"] = device_hook_state
+                acs_device.save()
+                logger.info(
+                    f"{acs_session.tag}/{acs_device}: beacon_ipv6_fix found fix on device, marked as applied."
+                )
+                hook_state["hook_done"] = str(timezone.datetime.now())
+                return None, None, hook_state
+
+            return None, None, hook_state
+
+    # Get the IPv6fix status, if we have not done so already.
+    if hook_state.get("ipv6_fix_retrieved",None) is None:
+        hook_state["ipv6_fix_retrieved"] = str(timezone.now())
+        acs_device.hook_state["beacon_ipv6_fix"] = device_hook_state
+        acs_device.save()
+
+        logger.info(
+            f"{acs_session.tag}/{acs_device}: beacon_ipv6_fix sending GetParameterValues."
+        )
+
+        root, body = cwmp_GetPrameterValues_soap([f"{root_object}.DeviceInfo.VendorConfigFile."], "ipv6_fix_retrieve", acs_session)
+        return root, body, hook_state
+
+
+    # If we made it this far, we have to Download the fix.
+
+    logger.info(
+        f"{acs_session.tag}/{acs_device}: beacon_ipv6_fix Sending download command."
+    )
+
+    # Download
+    cwmp_id = uuid.uuid4().hex
+    software_url = acs_device.get_vendor_config_url(fix_filename)
+    root, body = cwmp_Download(software_url, cwmp_id, acs_session, filetype="3 Vendor Configuration File")
+    logger.info(f"{acs_session.tag}/{acs_device}: Downloading vendor config file {fix_filename}")
+
+    device_hook_state["download_command_sent_at"] = str(timezone.now())
+    acs_device.hook_state["beacon_ipv6_fix"] = device_hook_state
+    acs_device.save()
+
+    hook_state["download_cwmp_id"] = cwmp_id
+    return root, body, hook_state
+
+
+def inform_spread(acs_http_request, hook_state):
+    acs_session = acs_http_request.acs_session
+    acs_device = acs_session.acs_device
+    root_object = acs_device.hook_state["root_object"]
+    device_hook_state = acs_device.hook_state.get("inform_spread", {})
+
+    spread_active = device_hook_state.get("spread_active",False)
+
+    # Get config from related device.
+    device_config = get_device_config_dict(acs_device)
+
+    # Determine which actions should be taken
+    spread_desired = acs_device.model.inform_spread_until and acs_device.model.inform_spread_until > timezone.now() or False
+    enable_spread = spread_desired and spread_active == False
+    disable_spread = (not spread_desired) and spread_active == True
+
+    # If we eiter need to disable or enable spread, we first needt to retreive the paramterkey in order to preserve it in the SetParamterValues
+    # If we detect a 0 BOOTSTRAP, set it anyways
+    if enable_spread or disable_spread or "0 BOOTSTRAP" in acs_session.inform_eventcodes:
+        # Retreive the current ParamterKey
+
+        # Process GetParamterValuesResponse
+        if acs_http_request.cwmp_id == "inform_spread:paramterkey_get":
+            if acs_http_request.cwmp_rpc_method == "GetParameterValuesResponse":
+                logger.info(
+                    f"{acs_session.tag}/{acs_device}: inform_spread, processing GetParameterValuesResponse."
+                )
+
+            value_dict = {}
+            for valuestruct in acs_http_request.soap_body.findall('.//ParameterValueStruct'):
+                key = valuestruct.find('Name').text
+                value = valuestruct.find('Value').text
+                value_dict[key] = value
+
+            hook_state["parameterkey"] = value_dict[f"{root_object}.ManagementServer.ParameterKey"]
+
+        # If we end up here, we need to retreive the paramterkey
+        if not hook_state.get("paramterkey_get_sent", None):
+            # Get the current Paramterkey
+            root, body = cwmp_GetPrameterValues_soap([f"{root_object}.ManagementServer.ParameterKey"], "inform_spread:paramterkey_get", acs_session)
+            hook_state["paramterkey_get_sent"] = str(timezone.now())
+            logger.info(
+                f"{acs_session.tag}/{acs_device}: inform_spread, retreiving current ParamterKey."
+            )
+            return root, body, hook_state
+
+    else:
+        # We are not enabling or disabling inform spread. Do nothing.
+        hook_state["hook_done"] = str(timezone.now())
+        return None, None, hook_state
+
+    # If we end up here, we either need to disable or enable inform_spread
+    if spread_desired:
+        inform_interval = device_config["django_acs.acs.informinterval"] + randint(0,180)
+    else:
+        inform_interval = device_config["django_acs.acs.informinterval"]
+
+
+    # Create the SetParamterValues command
+    parameter_dict = {
+        f"{root_object}.ManagementServer.PeriodicInformInterval": ("unsignedInt", inform_interval),
+    }
+
+    # def cwmp_SetParameterAttributes(attribute_dict, ParameterKey, cwmp_id, acs_session):
+    root, body = _cwmp_SetParameterValues_soap(
+        parameter_dict,
+        hook_state["parameterkey"],
+        "inform_spread_toggle",
+        acs_session,
+    )
+
+    hook_state["hook_done"] = str(timezone.now())
+    device_hook_state["spread_active"] = spread_desired
+    acs_device.hook_state["inform_spread"] = device_hook_state
+    acs_device.save()
+    logger.info(
+        f"{acs_session.tag}/{acs_device}: inform_spread, setting PeriodicInformInterval to {inform_interval}s."
+    )
+    return root, body, hook_state
 
 
 # HOOK HELPER FUNCTIONS
