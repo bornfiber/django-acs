@@ -34,6 +34,7 @@ urlpatterns = [
     path('devices/<int:pk>/create_job/', acsadmin.views.AcsQueueJobCreate.as_view(), name='acs_queue_job_create'),
     path('devices/<int:pk>/allacssessions/', acsadmin.views.AllAcsSessions.as_view(), name='acsdevice_all_acs_sessions'),
     path('devices/<int:pk>/action/<str:action>', acsadmin.views.acs_device_action, name='acs_device_action'),
+    path('devices/<int:pk>/download/<str:action>', acsadmin.views.acs_data_download, name='acs_data_download'),
 
 ]
 

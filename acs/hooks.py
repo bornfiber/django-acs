@@ -1854,23 +1854,33 @@ def load_from_yaml(acs_device, field_name, config_version="default"):
     if yaml_struct is None:
         return {}
 
+    root_object = None
     # Get the root object for the current AcsDevice, this should alway be defined from the Inform processing.
-    root_object = acs_device.hook_state["root_object"]
+    if acs_device.hook_state and "root_object" in acs_device.hook_state.keys() and acs_device.hook_state.get("root_object") is not None:
+        root_object = acs_device.hook_state.get("root_object")
+    else:
+        logger.warning(f"No root object found for {acs_device}, field_name:{field_name}, config_version: {config_version}, using empty config.")
+        return {}
 
     # If the passed config_version is None, set it to "default".
     if config_version is None:
         config_version = "default"
 
     # Search for available config version until one is available with descending prefernece, version+root_object, version, default.
-    if f"{config_version}_{root_object}" in yaml_struct.keys():
-        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
+    if root_object and f"{config_version}_{root_object}" in yaml_struct.keys() and yaml_struct[f"{config_version}_{root_object}"] is not None:
         config_version = f"{config_version}_{root_object}"
-    elif config_version in yaml_struct.keys():
         logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
-        pass
-    else:
+
+    elif config_version in yaml_struct.keys() and yaml_struct[config_version] is not None:
+        logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
+
+    elif "default" in yaml_struct.keys() and yaml_struct["default"] is not None:        
         config_version = "default"
         logger.debug(f"Loading YAML for {acs_device}, field_name:{field_name}, config_version: {config_version}")
+
+    else:
+        logger.warning(f"No valid config version found for {acs_device}, field_name:{field_name}, config_version: {config_version}, using empty config.")
+        return {}
 
     # Flatten the data.
     flattened_yaml_struct = flatten_yaml_struct(yaml_struct[config_version])

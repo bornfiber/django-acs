@@ -8,6 +8,8 @@ from django.utils import timezone
 from acs.models import *
 from .forms import AcsDeviceActionForm
 
+from json import dumps
+
 
 class AcsQueueJobList(ListView):
     model = AcsQueueJob
@@ -145,11 +147,13 @@ def acs_device_action(request, pk, action):
         elif action == "full_parameters_request":
             acs_device_qs.update(full_parameters_request=not acs_device.full_parameters_request)
         elif action == "factory_default_request":
-            acs_device_qs.update(factory_default_request=not acs_device.factory_default_request)
+            acs_device_qs.update(factory_default_request=True)
+        elif action == "cancel_factory_default_request":
+            acs_device_qs.update(factory_default_request=False)
         elif action == "reconfigure":
             if acs_device_qs.get().current_config_level == acs_device_qs.get().desired_config_level:
                 acs_device_qs.update(desired_config_level=timezone.now())
-            else:
+        elif action == "cancel_reconfigure":
                 acs_device_qs.update(desired_config_level=acs_device_qs.get().current_config_level)
         else:
             return HttpResponse("Error")
@@ -160,6 +164,17 @@ def acs_device_action(request, pk, action):
         request, "includes/acs_device_status_panel_async.html", {"acs_device": acs_device }
     )
 
+@require_http_methods(["GET"])
+def acs_data_download(request, pk, action):
+    acs_device = get_object_or_404(AcsDevice, id=pk)
+
+    if action == "full_parameters":
+        response = HttpResponse(content_type='application/json')
+        response['Content-Disposition'] = f'attachment; filename="acs_device_{acs_device.pk}_full_parameters.json"'
+        response.write(dumps(acs_device.acs_full_parameters,indent=2))
+        return response
+
+    return HttpResponse("Error")
 
 class AllAcsSessions(ListView):
     model = AcsSession

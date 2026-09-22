@@ -70,7 +70,7 @@
                 <div class="card card-default">
                     <div class="card-body" hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'>
                         {% url 'acsadmin:acs_queue_job_create' pk=acs_device.id as acs_queue_job_create_url %}
-                        <p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}
+                        {% comment %}<p>{% include 'includes/create-button.html' with url=acs_queue_job_create_url buttontext='Schedule ACS RPC Job' %}{% endcomment %}
                         </p>
                         <p>
                             <span class="btn btn-success" hx-target="#action_state" hx-post="./action/connection_request">
@@ -83,19 +83,34 @@
                             </span>
                             <span id="http_status"></span>
                         </p>
+                        <hr>
                         <p>
                             <span class="btn btn-warning" hx-target="#action_state" hx-post="./action/reconfigure">
+                                <i class="fa fa-gears"></i>
                                 Reconfigure
                             </span>
                         </p>
+                        <p>
+                            <span class="btn btn-success" hx-target="#action_state" hx-post="./action/cancel_reconfigure">
+                                Cancel Reconfigure
+                            </span>
+                        </p>
+                        <hr>
                         <p>
                             <span class="btn btn-warning" hx-target="#action_state" hx-post="./action/full_parameters_request">
                                 Get full Parameters
                             </span>
                         </p>
+                        <hr>
                         <p>
                             <span class="btn btn-danger" hx-target="#action_state" hx-post="./action/factory_default_request">
+                                <i class="fa fa-recycle"></i>
                                 Factory default
+                            </span>
+                        </p>
+                        <p>
+                            <span class="btn btn-success" hx-target="#action_state" hx-post="./action/cancel_factory_default_request">
+                                Cancel Factory default
                             </span>
                         </p>
                         <p>
