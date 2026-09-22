@@ -365,6 +365,9 @@ def configure_xmpp(acs_http_request, hook_state):
     # Set the praramterkey, if there is no desired_config_level, use a placeholder value of "xmpp_done".
     if acs_device.current_config_level is None:
         parameter_key = str(settings.CWMP_CONFIG_INCOMPLETE_PARAMETERKEY_DATE)
+    elif acs_device.hook_state.get("no_config"):
+        # Set the desired parameterkey from ACS to stop continued configuration attempts.
+        parameter_key = str(acs_device.desired_config_level)
     else:
         # If there is a current config level, we reuse it.
         parameter_key = str(acs_device.current_config_level)
@@ -502,10 +505,6 @@ def device_config(acs_http_request, hook_state):
         return None, None, hook_state
 
     if "no_config" in acs_device.hook_state.keys():
-        # satisfy current_config_level, to avoid unnecessary configuration attempts.
-        acs_device.current_config_level = acs_device.desired_config_level
-        acs_device.save()
-
         hook_state["hook_done"] = True
         return None, None, hook_state
 
