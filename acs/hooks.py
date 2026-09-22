@@ -502,6 +502,10 @@ def device_config(acs_http_request, hook_state):
         return None, None, hook_state
 
     if "no_config" in acs_device.hook_state.keys():
+        # satisfy current_config_level, to avoid unnecessary configuration attempts.
+        acs_device.current_config_level = acs_device.desired_config_level
+        acs_device.save()
+
         hook_state["hook_done"] = True
         return None, None, hook_state
 
