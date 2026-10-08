@@ -68,8 +68,9 @@ class AcsDevice(AcsBaseModel):
             # If we don't have a related device we cant get a config from MRX.
             return {"NO MRX Related device": "No config available"}
 
-        device_config = related_device.get_acs_config(access_domain=self.hook_state.get("latest_access_domain", None))
-        device_config["django_acs.acs_device.latest_access_domain"] = self.hook_state.get("latest_access_domain", None)
+        if self.hook_state:
+            device_config = related_device.get_acs_config(access_domain=self.hook_state.get("latest_access_domain", None))
+            device_config["django_acs.acs_device.latest_access_domain"] = self.hook_state.get("latest_access_domain", None)
 
         return device_config
 
